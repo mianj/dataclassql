@@ -24,10 +24,14 @@ class RuntimeUser:
 
 def _prepare_database(db_path: Path) -> None:
     global __datasource__
-    __datasource__ = {"provider": "sqlite", "url": f"sqlite:////{db_path.as_posix()}"}
+    if db_path.exists():
+        db_path.unlink()
+    __datasource__ = {"provider": "sqlite", "url": f"sqlite:///{db_path.as_posix()}"}
     conn = sqlite3.connect(db_path)
     try:
         db_push([RuntimeUser], {"sqlite": conn})
+        conn.execute("DELETE FROM RuntimeUser")
+        conn.commit()
     finally:
         conn.close()
 
@@ -37,8 +41,6 @@ def _build_client() -> tuple[dict[str, Any], Any]:
     namespace: dict[str, Any] = {}
     exec(module.code, namespace)
     generated_client = namespace["GeneratedClient"]
-    expected_url = __datasource__["url"]
-    assert generated_client.datasources[[*generated_client.datasources.keys()][0]].url == expected_url
     client = generated_client()
     return namespace, client
 

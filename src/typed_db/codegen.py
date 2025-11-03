@@ -129,16 +129,23 @@ def _render_insert_structures(info: ModelInfo, renderer: "_TypeRenderer") -> str
         default_fragment = _render_default_fragment(info.model.__name__, col)
         if default_fragment is not None:
             dataclass_lines.append(f"    {col.name}: {annotation} = {default_fragment}")
+        elif col.auto_increment:
+            dataclass_lines.append(f"    {col.name}: {annotation} = None")
         else:
             dataclass_lines.append(f"    {col.name}: {annotation}")
     if not dataclass_lines:
         dataclass_lines.append("    pass")
-    dataclass_block = f"@dataclass(slots=True)\nclass {info.model.__name__}Insert:\n" + "\n".join(dataclass_lines)
+    dataclass_block = f"@dataclass(slots=True, kw_only=True)\nclass {info.model.__name__}Insert:\n" + "\n".join(dataclass_lines)
 
     dict_lines = []
     for col in insert_fields:
         annotation = _format_insert_annotation(col, renderer)
-        dict_lines.append(f"    {col.name}: {annotation}")
+        if col.auto_increment:
+            renderer.require_typing("NotRequired")
+            base_annotation = _strip_optional_annotation(annotation)
+            dict_lines.append(f"    {col.name}: NotRequired[{base_annotation}]")
+        else:
+            dict_lines.append(f"    {col.name}: {annotation}")
     if not dict_lines:
         dict_lines.append("    pass")
     dict_block = f"class {info.model.__name__}InsertDict(TypedDict):\n" + "\n".join(dict_lines)
@@ -361,6 +368,12 @@ def _sanitize_identifier(value: str) -> str:
     return identifier
 
 
+def _strip_optional_annotation(annotation: str) -> str:
+    parts = [part.strip() for part in annotation.split("|")]
+    filtered = [part for part in parts if part != "None"]
+    return filtered[0] if len(filtered) == 1 else " | ".join(filtered)
+
+
 def _camel_to_snake(name: str) -> str:
     pattern = re.compile(r"(?<!^)(?=[A-Z])")
     return pattern.sub("_", name).lower()
@@ -425,3 +438,6 @@ class _TypeRenderer:
     @property
     def typing_names(self) -> set[str]:
         return set(self._typing_imports)
+
+    def require_typing(self, name: str) -> None:
+        self._typing_imports.add(name)

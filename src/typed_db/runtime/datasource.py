@@ -25,8 +25,6 @@ def resolve_sqlite_path(url: str | None) -> str:
         return ":memory:"
     if path.startswith("//"):
         resolved = Path(path[1:])
-    elif path.startswith("/"):
-        resolved = Path(path[1:])
     else:
         resolved = Path(path)
     return resolved.as_posix()

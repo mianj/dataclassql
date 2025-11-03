@@ -7,7 +7,7 @@ from typed_db.runtime.datasource import resolve_sqlite_path
 import sqlite3
 from datetime import datetime
 from test_codegen import Address, BirthDay, Book, User, UserBook
-from typing import Any, Literal, Mapping, Sequence, TypedDict, cast
+from typing import Any, Literal, Mapping, NotRequired, Sequence, TypedDict, cast
 
 @dataclass(slots=True)
 class DataSourceConfig:
@@ -31,14 +31,14 @@ class ForeignKeySpec:
 TAddressIncludeCol = Literal['User']
 TAddressSortableCol = Literal['id', 'location', 'user_id']
 
-@dataclass(slots=True)
+@dataclass(slots=True, kw_only=True)
 class AddressInsert:
-    id: int | None
+    id: int | None = None
     location: str
     user_id: int
 
 class AddressInsertDict(TypedDict):
-    id: int | None
+    id: NotRequired[int]
     location: str
     user_id: int
 
@@ -83,7 +83,7 @@ class AddressTable:
 TBirthDayIncludeCol = Literal['User']
 TBirthDaySortableCol = Literal['user_id', 'date']
 
-@dataclass(slots=True)
+@dataclass(slots=True, kw_only=True)
 class BirthDayInsert:
     user_id: int
     date: datetime
@@ -132,13 +132,13 @@ class BirthDayTable:
 TBookIncludeCol = Literal['UserBook']
 TBookSortableCol = Literal['id', 'name']
 
-@dataclass(slots=True)
+@dataclass(slots=True, kw_only=True)
 class BookInsert:
-    id: int | None
+    id: int | None = None
     name: str
 
 class BookInsertDict(TypedDict):
-    id: int | None
+    id: NotRequired[int]
     name: str
 
 class BookWhereDict(TypedDict, total=False):
@@ -174,15 +174,15 @@ class BookTable:
 TUserIncludeCol = Literal['Address', 'BirthDay', 'UserBook']
 TUserSortableCol = Literal['id', 'name', 'email', 'last_login']
 
-@dataclass(slots=True)
+@dataclass(slots=True, kw_only=True)
 class UserInsert:
-    id: int | None
+    id: int | None = None
     name: str
     email: str
     last_login: datetime
 
 class UserInsertDict(TypedDict):
-    id: int | None
+    id: NotRequired[int]
     name: str
     email: str
     last_login: datetime
@@ -222,7 +222,7 @@ class UserTable:
 TUserBookIncludeCol = Literal['Book', 'User']
 TUserBookSortableCol = Literal['user_id', 'book_id', 'created_at']
 
-@dataclass(slots=True)
+@dataclass(slots=True, kw_only=True)
 class UserBookInsert:
     user_id: int
     book_id: int

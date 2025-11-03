@@ -8,7 +8,7 @@ from collections.abc import Sequence as ABCSequence
 from dataclasses import dataclass, fields
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal, Mapping, get_args, get_origin, get_type_hints
+from typing import Any, Literal, Mapping, NotRequired, get_args, get_origin, get_type_hints
 
 from typed_db.codegen import generate_client
 from typed_db.runtime.backends import SQLiteBackend
@@ -147,10 +147,11 @@ def test_generate_client_matches_expected_shape() -> None:
     assert insert_hints['last_login'] == user_model_hints['last_login']
 
     insert_dict_hints = get_type_hints(user_insert_dict, globalns=namespace, localns=namespace)
-    assert set(get_args(insert_dict_hints['id'])) == {int, type(None)}
+    insert_dict_hints_extras = get_type_hints(user_insert_dict, globalns=namespace, localns=namespace, include_extras=True)
+    id_annotation = insert_dict_hints_extras['id']
+    assert get_origin(id_annotation) is NotRequired
     assert insert_dict_hints['email'] == user_model_hints['email']
     assert insert_dict_hints['last_login'] == user_model_hints['last_login']
-    assert insert_dict_hints == insert_hints
 
     assert getattr(user_insert_dict, '__total__') is True
     assert getattr(user_where_dict, '__total__') is False
@@ -238,13 +239,13 @@ def test_generated_client_supports_named_datasources() -> None:
     primary_module = types.ModuleType(module_name_primary)
     setattr(primary_module, "__datasource__", {
         "provider": "sqlite",
-        "url": f"sqlite:////{primary_db.as_posix()}",
+        "url": f"sqlite:///{primary_db.as_posix()}",
         "name": "primary",
     })
     secondary_module = types.ModuleType(module_name_secondary)
     setattr(secondary_module, "__datasource__", {
         "provider": "sqlite",
-        "url": f"sqlite:////{secondary_db.as_posix()}",
+        "url": f"sqlite:///{secondary_db.as_posix()}",
         "name": "secondary",
     })
     sys.modules[module_name_primary] = primary_module
@@ -274,8 +275,8 @@ def test_generated_client_supports_named_datasources() -> None:
         generated_client_cls = generated_client
         data_source_config = namespace["DataSourceConfig"]
         expected_mapping = {
-            "primary": data_source_config(provider="sqlite", url=f"sqlite:////{primary_db.as_posix()}", name="primary"),
-            "secondary": data_source_config(provider="sqlite", url=f"sqlite:////{secondary_db.as_posix()}", name="secondary"),
+            "primary": data_source_config(provider="sqlite", url=f"sqlite:///{primary_db.as_posix()}", name="primary"),
+            "secondary": data_source_config(provider="sqlite", url=f"sqlite:///{secondary_db.as_posix()}", name="secondary"),
         }
         assert generated_client.datasources == expected_mapping
 
