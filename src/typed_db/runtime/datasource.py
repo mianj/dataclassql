@@ -24,8 +24,14 @@ def resolve_sqlite_path(url: str | None) -> str:
     if not path:
         return ":memory:"
 
-    resolved = Path(path).relative_to("/").resolve()
-    return resolved.as_posix()
+    if path.startswith("//"):
+        target = Path(path[1:])
+        return target.as_posix()
+
+    if path.startswith("/"):
+        path = path[1:]
+    target = Path(path)
+    return target.as_posix()
 
 
 def open_sqlite_connection(url: str | None) -> sqlite3.Connection:
