@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import threading
-from dataclasses import is_dataclass
+from dataclasses import MISSING, fields, is_dataclass
 from typing import (
     Any,
     Callable,
@@ -12,6 +12,7 @@ from typing import (
     cast,
     runtime_checkable,
 )
+from typing import get_origin
 
 from pypika import Query, Table
 from pypika.enums import Order
@@ -308,9 +309,26 @@ class SQLiteBackend[ModelT, InsertT, WhereT: Mapping[str, object]](BackendProtoc
 
     @staticmethod
     def _row_to_model(table: TableProtocol[ModelT, Any, Any], row: sqlite3.Row) -> ModelT:
-        data = {column: row[column] for column in table.columns}
         model = table.model
-        return cast(ModelT, model(**data))
+        if is_dataclass(model):
+            values: dict[str, Any] = {column: row[column] for column in table.columns}
+            instance = model.__new__(model)
+            for field in fields(model):
+                if field.name in values:
+                    value = values[field.name]
+                elif field.default is not MISSING:
+                    value = field.default
+                elif field.default_factory is not MISSING:  # type: ignore[attr-defined]
+                    value = field.default_factory()  # type: ignore[misc]
+                else:
+                    origin = get_origin(field.type)
+                    if origin in (list, set, frozenset):
+                        value = origin()  # type: ignore[call-arg]
+                    else:
+                        value = None
+                setattr(instance, field.name, value)
+            return cast(ModelT, instance)
+        return cast(ModelT, model(**{column: row[column] for column in table.columns}))
 
     def close(self) -> None:
         if self._factory is None:
