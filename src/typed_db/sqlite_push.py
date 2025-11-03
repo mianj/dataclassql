@@ -118,10 +118,17 @@ def _apply_sql_statements(conn: sqlite3.Connection, statements: Iterable[str]) -
     conn.commit()
 
 
-def push_sqlite(conn: sqlite3.Connection, infos: Sequence[ModelInfo]) -> None:
+def push_sqlite(
+    conn: sqlite3.Connection,
+    infos: Sequence[ModelInfo],
+    *,
+    sync_indexes: bool = False,
+) -> None:
     for info in infos:
         create_sql, index_entries = _build_sqlite_schema(info)
+
         statements: list[str] = [create_sql]
+        expected_indexes = {name for name, _ in index_entries}
 
         existing_indexes = set()
         cur = conn.execute(
@@ -130,6 +137,16 @@ def push_sqlite(conn: sqlite3.Connection, infos: Sequence[ModelInfo]) -> None:
             (info.model.__name__,),
         )
         existing_indexes.update(name for (name,) in cur.fetchall())
+
+        if sync_indexes:
+            for name in sorted(existing_indexes):
+                if name.startswith("sqlite_"):
+                    continue
+                if name in expected_indexes:
+                    continue
+                statements.append(
+                    f"DROP INDEX IF EXISTS {format_quotes(name, '\"')};"
+                )
 
         for name, sql in index_entries:
             if name in existing_indexes:
@@ -142,6 +159,8 @@ def push_sqlite(conn: sqlite3.Connection, infos: Sequence[ModelInfo]) -> None:
 def db_push(
     models: Sequence[type[Any]],
     connections: Mapping[str, Any],
+    *,
+    sync_indexes: bool = False,
 ) -> None:
     model_infos = inspect_models(models)
     grouped: dict[str, list[ModelInfo]] = {}
@@ -158,7 +177,7 @@ def db_push(
             raise TypeError(
                 f"Connection for provider '{provider}' must be sqlite3.Connection"
             )
-        push_sqlite(conn, infos)
+        push_sqlite(conn, infos, sync_indexes=sync_indexes)
 
 
 def _build_sqlite_schema(info: ModelInfo) -> tuple[str, list[tuple[str, str]]]:

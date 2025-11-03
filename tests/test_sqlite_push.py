@@ -69,3 +69,25 @@ def test_db_push_creates_table_and_indexes():
         ).fetchone()[0]
         == 1
     )
+
+
+def test_db_push_sync_indexes_aligns_with_model():
+    info = inspect_models([User])["User"]
+    conn = sqlite3.connect(":memory:")
+    push_sqlite(conn, [info])
+
+    conn.execute('CREATE INDEX "idx_User_extra" ON "User" ("created_at", "name")')
+    conn.execute('DROP INDEX "idx_User_name"')
+
+    db_push([User], {"sqlite": conn}, sync_indexes=True)
+
+    rows = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='User'"
+    ).fetchall()
+
+    index_names = {name for (name,) in rows if not name.startswith("sqlite_")}
+    assert index_names == {
+        "idx_User_name",
+        "idx_User_created_at",
+        "uq_User_email",
+    }

@@ -188,7 +188,7 @@ class UserTable:
     columns = ('id', 'name', 'email', 'last_login')
     primary_key = ('id',)
     indexes = (('name',), ('name', 'email'), ('last_login',),)
-    unique_indexes = ()
+    unique_indexes = (('name', 'email'),)
     foreign_keys = ()
 
     def __init__(self, backend: Any) -> None:
