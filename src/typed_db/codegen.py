@@ -21,7 +21,10 @@ def generate_client(models: Sequence[type[Any]]) -> GeneratedModule:
 
     header_lines: list[str] = ["from __future__ import annotations", ""]
 
-    base_imports = {"from dataclasses import dataclass, field"}
+    base_imports = {
+        "from dataclasses import dataclass, field",
+        "from typed_db.runtime.backends import BackendProtocol, create_backend",
+    }
 
     model_imports: dict[str, set[str]] = defaultdict(set)
     for info in model_infos.values():
@@ -49,7 +52,7 @@ def generate_client(models: Sequence[type[Any]]) -> GeneratedModule:
     for module, names in sorted(combined_imports.items()):
         names_list = ", ".join(sorted(names))
         import_lines.append(f"from {module} import {names_list}")
-    typing_names = {"Any", "Literal", "Mapping", "Sequence", "TypedDict"}
+    typing_names = {"Any", "Literal", "Mapping", "Sequence", "TypedDict", "cast"}
     typing_names.update(renderer.typing_names)
     if typing_names:
         import_lines.append(f"from typing import {', '.join(sorted(typing_names))}")
@@ -158,6 +161,7 @@ def _render_where_dict(info: ModelInfo, renderer: "_TypeRenderer") -> str:
 def _render_table_class(info: ModelInfo, renderer: "_TypeRenderer", include_alias: str | None, sortable_alias: str) -> str:
     name = info.model.__name__
     indent = "    "
+    where_alias = f"{name}WhereDict"
     lines = [f"class {name}Table:"]
     lines.append(f"{indent}model = {name}")
     lines.append(f"{indent}insert_model = {name}Insert")
@@ -166,18 +170,23 @@ def _render_table_class(info: ModelInfo, renderer: "_TypeRenderer", include_alia
     lines.append(
         f"{indent}datasource = DataSourceConfig(provider={ds.provider!r}, url={ds_url_repr}, name={repr(ds.name)})"
     )
-    lines.append(f"{indent}columns = {_tuple_literal(col.name for col in info.columns)}")
-    lines.append(f"{indent}primary_key = {_tuple_literal(info.primary_key)}")
+    lines.append(f"{indent}columns: tuple[str, ...] = {_tuple_literal(col.name for col in info.columns)}")
+    auto_increment = tuple(col.name for col in info.columns if col.auto_increment)
+    if auto_increment:
+        lines.append(f"{indent}auto_increment_columns: tuple[str, ...] = {_tuple_literal(auto_increment)}")
+    else:
+        lines.append(f"{indent}auto_increment_columns: tuple[str, ...] = ()")
+    lines.append(f"{indent}primary_key: tuple[str, ...] = {_tuple_literal(info.primary_key)}")
     if info.indexes:
-        lines.append(f"{indent}indexes = {_tuple_literal(tuple(idx) for idx in info.indexes)}")
+        lines.append(f"{indent}indexes: tuple[tuple[str, ...], ...] = {_tuple_literal(tuple(idx) for idx in info.indexes)}")
     else:
-        lines.append(f"{indent}indexes = ()")
+        lines.append(f"{indent}indexes: tuple[tuple[str, ...], ...] = ()")
     if info.unique_indexes:
-        lines.append(f"{indent}unique_indexes = {_tuple_literal(tuple(idx) for idx in info.unique_indexes)}")
+        lines.append(f"{indent}unique_indexes: tuple[tuple[str, ...], ...] = {_tuple_literal(tuple(idx) for idx in info.unique_indexes)}")
     else:
-        lines.append(f"{indent}unique_indexes = ()")
+        lines.append(f"{indent}unique_indexes: tuple[tuple[str, ...], ...] = ()")
     if info.foreign_keys:
-        lines.append(f"{indent}foreign_keys = (")
+        lines.append(f"{indent}foreign_keys: tuple[ForeignKeySpec, ...] = (")
         for fk in info.foreign_keys:
             lines.append(f"{indent*2}ForeignKeySpec(")
             lines.append(f"{indent*3}local_columns={_tuple_literal(fk.local_columns)},")
@@ -187,23 +196,27 @@ def _render_table_class(info: ModelInfo, renderer: "_TypeRenderer", include_alia
             lines.append(f"{indent*2}),")
         lines.append(f"{indent})")
     else:
-        lines.append(f"{indent}foreign_keys = ()")
+        lines.append(f"{indent}foreign_keys: tuple[ForeignKeySpec, ...] = ()")
     lines.append("")
-    lines.append(f"{indent}def __init__(self, backend: Any) -> None:")
-    lines.append(f"{indent*2}self._backend = backend")
+    lines.append(f"{indent}def __init__(self, backend: BackendProtocol[{name}, {name}Insert, {where_alias}]) -> None:")
+    lines.append(f"{indent*2}self._backend: BackendProtocol[{name}, {name}Insert, {where_alias}] = backend")
     lines.append("")
     lines.append(f"{indent}def insert(self, data: {name}Insert | {name}InsertDict) -> {name}:")
-    lines.append(f"{indent*2}raise NotImplementedError('Database insert is not implemented yet')")
+    lines.append(f"{indent*2}return self._backend.insert(self, data)")
     lines.append("")
-    lines.append(f"{indent}def insert_many(self, data: Sequence[{name}Insert | {name}InsertDict]) -> list[{name}]:")
-    lines.append(f"{indent*2}raise NotImplementedError('Database insert_many is not implemented yet')")
+    lines.append(f"{indent}def insert_many(self, data: Sequence[{name}Insert | {name}InsertDict], *, batch_size: int | None = None) -> list[{name}]:")
+    lines.append(f"{indent*2}return self._backend.insert_many(self, data, batch_size=batch_size)")
     lines.append("")
     include_annotation = f"dict[{include_alias}, bool] | None"
-    lines.append(f"{indent}def find_many(self, *, where: {name}WhereDict | None = None, include: {include_annotation} = None, order_by: Sequence[tuple[{sortable_alias}, Literal['asc', 'desc']]] | None = None, take: int | None = None, skip: int | None = None) -> list[{name}]:")
-    lines.append(f"{indent*2}raise NotImplementedError('Query generation is not implemented yet')")
+    lines.append(f"{indent}def find_many(self, *, where: {where_alias} | None = None, include: {include_annotation} = None, order_by: Sequence[tuple[{sortable_alias}, Literal['asc', 'desc']]] | None = None, take: int | None = None, skip: int | None = None) -> list[{name}]:")
+    lines.append(
+        f"{indent*2}return self._backend.find_many(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, take=take, skip=skip)"
+    )
     lines.append("")
-    lines.append(f"{indent}def find_first(self, *, where: {name}WhereDict | None = None, include: {include_annotation} = None, order_by: Sequence[tuple[{sortable_alias}, Literal['asc', 'desc']]] | None = None, skip: int | None = None) -> {name} | None:")
-    lines.append(f"{indent*2}raise NotImplementedError('Query generation is not implemented yet')")
+    lines.append(f"{indent}def find_first(self, *, where: {where_alias} | None = None, include: {include_annotation} = None, order_by: Sequence[tuple[{sortable_alias}, Literal['asc', 'desc']]] | None = None, skip: int | None = None) -> {name} | None:")
+    lines.append(
+        f"{indent*2}return self._backend.find_first(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, skip=skip)"
+    )
     return "\n".join(lines)
 
 
@@ -247,15 +260,20 @@ def _render_client_class(model_infos: Mapping[str, ModelInfo]) -> str:
     lines.append(f"{indent}}}")
     lines.append("")
     lines.append(f"{indent}def __init__(self, connections: Mapping[str, Any]) -> None:")
-    lines.append(f"{indent*2}self._connections = connections")
-    lines.append(f"{indent*2}for key in self.datasources.keys():")
+    lines.append(f"{indent*2}self._connections: dict[str, BackendProtocol[Any, Any, Mapping[str, object]]] = {{}}")
+    lines.append(f"{indent*2}for key, config in self.datasources.items():")
     lines.append(f"{indent*3}if key not in connections:")
     lines.append(f"{indent*4}raise KeyError(f'datasource {{key}} missing connection')")
+    lines.append(f"{indent*3}backend = create_backend(config.provider, connections[key])")
+    lines.append(f"{indent*3}self._connections[key] = backend")
     for name in sorted(model_infos.keys()):
         attr = _camel_to_snake(name)
         datasource = model_infos[name].datasource
         ds_key = datasource.name or datasource.provider
-        lines.append(f"{indent*2}self.{attr} = {name}Table(connections[{ds_key!r}])")
+        where_alias = f"{name}WhereDict"
+        lines.append(
+            f"{indent*2}self.{attr} = {name}Table(cast(BackendProtocol[{name}, {name}Insert, {where_alias}], self._connections[{ds_key!r}]))"
+        )
     return "\n".join(lines)
 
 

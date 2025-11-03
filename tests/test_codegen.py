@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 import sys
 import types
 from collections.abc import Sequence as ABCSequence
@@ -8,6 +9,7 @@ from datetime import datetime
 from typing import Any, Literal, Mapping, get_args, get_origin, get_type_hints
 
 from typed_db.codegen import generate_client
+from typed_db.runtime.backends import SQLiteBackend
 
 __datasource__ = {
     "provider": "sqlite",
@@ -130,6 +132,8 @@ def test_generate_client_matches_expected_shape() -> None:
     user_insert_dict = namespace['UserInsertDict']
     user_where_dict = namespace['UserWhereDict']
 
+    backend_protocol = namespace['BackendProtocol']
+
     insert_field_names = [f.name for f in fields(user_insert_cls)]
     assert insert_field_names == list(columns_tuple)
 
@@ -171,6 +175,14 @@ def test_generate_client_matches_expected_shape() -> None:
     inner_union = get_args(insert_many_data)[0]
     assert set(get_args(inner_union)) == {user_insert_cls, user_insert_dict}
     assert insert_many_hints['return'] == list[namespace['User']]
+    assert insert_many_hints['batch_size'] == int | None
+
+    table_init_hints = get_type_hints(user_table_cls.__init__, globalns=namespace, localns=namespace)
+    assert table_init_hints['backend'] == backend_protocol[
+        namespace['User'],
+        namespace['UserInsert'],
+        namespace['UserWhereDict'],
+    ]
 
     find_many_hints = get_type_hints(user_table_cls.find_many, globalns=namespace, localns=namespace)
     assert find_many_hints['return'] == list[namespace['User']]
@@ -265,12 +277,15 @@ def test_generated_client_supports_named_datasources() -> None:
         assert primary_table_cls.datasource == expected_mapping["primary"]
         assert secondary_table_cls.datasource == expected_mapping["secondary"]
 
-        connections = {"primary": object(), "secondary": object()}
+        connections = {
+            "primary": sqlite3.connect(":memory:"),
+            "secondary": sqlite3.connect(":memory:"),
+        }
         client = generated_client(connections)
         assert isinstance(client.primary_user, primary_table_cls)
         assert isinstance(client.secondary_user, secondary_table_cls)
-        assert client.primary_user._backend is connections["primary"]
-        assert client.secondary_user._backend is connections["secondary"]
+        assert isinstance(client.primary_user._backend, SQLiteBackend)
+        assert isinstance(client.secondary_user._backend, SQLiteBackend)
     finally:
         sys.modules.pop(module_name_primary, None)
         sys.modules.pop(module_name_secondary, None)

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typed_db.runtime.backends import BackendProtocol, create_backend
 from datetime import datetime
 from test_codegen import Address, BirthDay, Book, User, UserBook
-from typing import Any, Literal, Mapping, Sequence, TypedDict
+from typing import Any, Literal, Mapping, Sequence, TypedDict, cast
 
 @dataclass(slots=True)
 class DataSourceConfig:
@@ -47,11 +48,12 @@ class AddressTable:
     model = Address
     insert_model = AddressInsert
     datasource = DataSourceConfig(provider='sqlite', url='sqlite:///analytics.db', name=None)
-    columns = ('id', 'location', 'user_id')
-    primary_key = ('id',)
-    indexes = ()
-    unique_indexes = ()
-    foreign_keys = (
+    columns: tuple[str, ...] = ('id', 'location', 'user_id')
+    auto_increment_columns: tuple[str, ...] = ('id',)
+    primary_key: tuple[str, ...] = ('id',)
+    indexes: tuple[tuple[str, ...], ...] = ()
+    unique_indexes: tuple[tuple[str, ...], ...] = ()
+    foreign_keys: tuple[ForeignKeySpec, ...] = (
         ForeignKeySpec(
             local_columns=('user_id',),
             remote_model=User,
@@ -60,20 +62,20 @@ class AddressTable:
         ),
     )
 
-    def __init__(self, backend: Any) -> None:
-        self._backend = backend
+    def __init__(self, backend: BackendProtocol[Address, AddressInsert, AddressWhereDict]) -> None:
+        self._backend: BackendProtocol[Address, AddressInsert, AddressWhereDict] = backend
 
     def insert(self, data: AddressInsert | AddressInsertDict) -> Address:
-        raise NotImplementedError('Database insert is not implemented yet')
+        return self._backend.insert(self, data)
 
-    def insert_many(self, data: Sequence[AddressInsert | AddressInsertDict]) -> list[Address]:
-        raise NotImplementedError('Database insert_many is not implemented yet')
+    def insert_many(self, data: Sequence[AddressInsert | AddressInsertDict], *, batch_size: int | None = None) -> list[Address]:
+        return self._backend.insert_many(self, data, batch_size=batch_size)
 
     def find_many(self, *, where: AddressWhereDict | None = None, include: dict[TAddressIncludeCol, bool] | None = None, order_by: Sequence[tuple[TAddressSortableCol, Literal['asc', 'desc']]] | None = None, take: int | None = None, skip: int | None = None) -> list[Address]:
-        raise NotImplementedError('Query generation is not implemented yet')
+        return self._backend.find_many(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, take=take, skip=skip)
 
     def find_first(self, *, where: AddressWhereDict | None = None, include: dict[TAddressIncludeCol, bool] | None = None, order_by: Sequence[tuple[TAddressSortableCol, Literal['asc', 'desc']]] | None = None, skip: int | None = None) -> Address | None:
-        raise NotImplementedError('Query generation is not implemented yet')
+        return self._backend.find_first(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, skip=skip)
 
 TBirthDayIncludeCol = Literal['User']
 TBirthDaySortableCol = Literal['user_id', 'date']
@@ -95,11 +97,12 @@ class BirthDayTable:
     model = BirthDay
     insert_model = BirthDayInsert
     datasource = DataSourceConfig(provider='sqlite', url='sqlite:///analytics.db', name=None)
-    columns = ('user_id', 'date')
-    primary_key = ('user_id',)
-    indexes = ()
-    unique_indexes = ()
-    foreign_keys = (
+    columns: tuple[str, ...] = ('user_id', 'date')
+    auto_increment_columns: tuple[str, ...] = ()
+    primary_key: tuple[str, ...] = ('user_id',)
+    indexes: tuple[tuple[str, ...], ...] = ()
+    unique_indexes: tuple[tuple[str, ...], ...] = ()
+    foreign_keys: tuple[ForeignKeySpec, ...] = (
         ForeignKeySpec(
             local_columns=('user_id',),
             remote_model=User,
@@ -108,20 +111,20 @@ class BirthDayTable:
         ),
     )
 
-    def __init__(self, backend: Any) -> None:
-        self._backend = backend
+    def __init__(self, backend: BackendProtocol[BirthDay, BirthDayInsert, BirthDayWhereDict]) -> None:
+        self._backend: BackendProtocol[BirthDay, BirthDayInsert, BirthDayWhereDict] = backend
 
     def insert(self, data: BirthDayInsert | BirthDayInsertDict) -> BirthDay:
-        raise NotImplementedError('Database insert is not implemented yet')
+        return self._backend.insert(self, data)
 
-    def insert_many(self, data: Sequence[BirthDayInsert | BirthDayInsertDict]) -> list[BirthDay]:
-        raise NotImplementedError('Database insert_many is not implemented yet')
+    def insert_many(self, data: Sequence[BirthDayInsert | BirthDayInsertDict], *, batch_size: int | None = None) -> list[BirthDay]:
+        return self._backend.insert_many(self, data, batch_size=batch_size)
 
     def find_many(self, *, where: BirthDayWhereDict | None = None, include: dict[TBirthDayIncludeCol, bool] | None = None, order_by: Sequence[tuple[TBirthDaySortableCol, Literal['asc', 'desc']]] | None = None, take: int | None = None, skip: int | None = None) -> list[BirthDay]:
-        raise NotImplementedError('Query generation is not implemented yet')
+        return self._backend.find_many(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, take=take, skip=skip)
 
     def find_first(self, *, where: BirthDayWhereDict | None = None, include: dict[TBirthDayIncludeCol, bool] | None = None, order_by: Sequence[tuple[TBirthDaySortableCol, Literal['asc', 'desc']]] | None = None, skip: int | None = None) -> BirthDay | None:
-        raise NotImplementedError('Query generation is not implemented yet')
+        return self._backend.find_first(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, skip=skip)
 
 TBookIncludeCol = Literal['UserBook']
 TBookSortableCol = Literal['id', 'name']
@@ -143,26 +146,27 @@ class BookTable:
     model = Book
     insert_model = BookInsert
     datasource = DataSourceConfig(provider='sqlite', url='sqlite:///analytics.db', name=None)
-    columns = ('id', 'name')
-    primary_key = ('id',)
-    indexes = (('name',),)
-    unique_indexes = ()
-    foreign_keys = ()
+    columns: tuple[str, ...] = ('id', 'name')
+    auto_increment_columns: tuple[str, ...] = ('id',)
+    primary_key: tuple[str, ...] = ('id',)
+    indexes: tuple[tuple[str, ...], ...] = (('name',),)
+    unique_indexes: tuple[tuple[str, ...], ...] = ()
+    foreign_keys: tuple[ForeignKeySpec, ...] = ()
 
-    def __init__(self, backend: Any) -> None:
-        self._backend = backend
+    def __init__(self, backend: BackendProtocol[Book, BookInsert, BookWhereDict]) -> None:
+        self._backend: BackendProtocol[Book, BookInsert, BookWhereDict] = backend
 
     def insert(self, data: BookInsert | BookInsertDict) -> Book:
-        raise NotImplementedError('Database insert is not implemented yet')
+        return self._backend.insert(self, data)
 
-    def insert_many(self, data: Sequence[BookInsert | BookInsertDict]) -> list[Book]:
-        raise NotImplementedError('Database insert_many is not implemented yet')
+    def insert_many(self, data: Sequence[BookInsert | BookInsertDict], *, batch_size: int | None = None) -> list[Book]:
+        return self._backend.insert_many(self, data, batch_size=batch_size)
 
     def find_many(self, *, where: BookWhereDict | None = None, include: dict[TBookIncludeCol, bool] | None = None, order_by: Sequence[tuple[TBookSortableCol, Literal['asc', 'desc']]] | None = None, take: int | None = None, skip: int | None = None) -> list[Book]:
-        raise NotImplementedError('Query generation is not implemented yet')
+        return self._backend.find_many(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, take=take, skip=skip)
 
     def find_first(self, *, where: BookWhereDict | None = None, include: dict[TBookIncludeCol, bool] | None = None, order_by: Sequence[tuple[TBookSortableCol, Literal['asc', 'desc']]] | None = None, skip: int | None = None) -> Book | None:
-        raise NotImplementedError('Query generation is not implemented yet')
+        return self._backend.find_first(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, skip=skip)
 
 TUserIncludeCol = Literal['Address', 'BirthDay', 'UserBook']
 TUserSortableCol = Literal['id', 'name', 'email', 'last_login']
@@ -190,26 +194,27 @@ class UserTable:
     model = User
     insert_model = UserInsert
     datasource = DataSourceConfig(provider='sqlite', url='sqlite:///analytics.db', name=None)
-    columns = ('id', 'name', 'email', 'last_login')
-    primary_key = ('id',)
-    indexes = (('name',), ('name', 'email'), ('last_login',),)
-    unique_indexes = (('name', 'email'),)
-    foreign_keys = ()
+    columns: tuple[str, ...] = ('id', 'name', 'email', 'last_login')
+    auto_increment_columns: tuple[str, ...] = ('id',)
+    primary_key: tuple[str, ...] = ('id',)
+    indexes: tuple[tuple[str, ...], ...] = (('name',), ('name', 'email'), ('last_login',),)
+    unique_indexes: tuple[tuple[str, ...], ...] = (('name', 'email'),)
+    foreign_keys: tuple[ForeignKeySpec, ...] = ()
 
-    def __init__(self, backend: Any) -> None:
-        self._backend = backend
+    def __init__(self, backend: BackendProtocol[User, UserInsert, UserWhereDict]) -> None:
+        self._backend: BackendProtocol[User, UserInsert, UserWhereDict] = backend
 
     def insert(self, data: UserInsert | UserInsertDict) -> User:
-        raise NotImplementedError('Database insert is not implemented yet')
+        return self._backend.insert(self, data)
 
-    def insert_many(self, data: Sequence[UserInsert | UserInsertDict]) -> list[User]:
-        raise NotImplementedError('Database insert_many is not implemented yet')
+    def insert_many(self, data: Sequence[UserInsert | UserInsertDict], *, batch_size: int | None = None) -> list[User]:
+        return self._backend.insert_many(self, data, batch_size=batch_size)
 
     def find_many(self, *, where: UserWhereDict | None = None, include: dict[TUserIncludeCol, bool] | None = None, order_by: Sequence[tuple[TUserSortableCol, Literal['asc', 'desc']]] | None = None, take: int | None = None, skip: int | None = None) -> list[User]:
-        raise NotImplementedError('Query generation is not implemented yet')
+        return self._backend.find_many(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, take=take, skip=skip)
 
     def find_first(self, *, where: UserWhereDict | None = None, include: dict[TUserIncludeCol, bool] | None = None, order_by: Sequence[tuple[TUserSortableCol, Literal['asc', 'desc']]] | None = None, skip: int | None = None) -> User | None:
-        raise NotImplementedError('Query generation is not implemented yet')
+        return self._backend.find_first(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, skip=skip)
 
 TUserBookIncludeCol = Literal['Book', 'User']
 TUserBookSortableCol = Literal['user_id', 'book_id', 'created_at']
@@ -234,11 +239,12 @@ class UserBookTable:
     model = UserBook
     insert_model = UserBookInsert
     datasource = DataSourceConfig(provider='sqlite', url='sqlite:///analytics.db', name=None)
-    columns = ('user_id', 'book_id', 'created_at')
-    primary_key = ('user_id', 'book_id')
-    indexes = (('created_at',),)
-    unique_indexes = ()
-    foreign_keys = (
+    columns: tuple[str, ...] = ('user_id', 'book_id', 'created_at')
+    auto_increment_columns: tuple[str, ...] = ()
+    primary_key: tuple[str, ...] = ('user_id', 'book_id')
+    indexes: tuple[tuple[str, ...], ...] = (('created_at',),)
+    unique_indexes: tuple[tuple[str, ...], ...] = ()
+    foreign_keys: tuple[ForeignKeySpec, ...] = (
         ForeignKeySpec(
             local_columns=('user_id',),
             remote_model=User,
@@ -253,20 +259,20 @@ class UserBookTable:
         ),
     )
 
-    def __init__(self, backend: Any) -> None:
-        self._backend = backend
+    def __init__(self, backend: BackendProtocol[UserBook, UserBookInsert, UserBookWhereDict]) -> None:
+        self._backend: BackendProtocol[UserBook, UserBookInsert, UserBookWhereDict] = backend
 
     def insert(self, data: UserBookInsert | UserBookInsertDict) -> UserBook:
-        raise NotImplementedError('Database insert is not implemented yet')
+        return self._backend.insert(self, data)
 
-    def insert_many(self, data: Sequence[UserBookInsert | UserBookInsertDict]) -> list[UserBook]:
-        raise NotImplementedError('Database insert_many is not implemented yet')
+    def insert_many(self, data: Sequence[UserBookInsert | UserBookInsertDict], *, batch_size: int | None = None) -> list[UserBook]:
+        return self._backend.insert_many(self, data, batch_size=batch_size)
 
     def find_many(self, *, where: UserBookWhereDict | None = None, include: dict[TUserBookIncludeCol, bool] | None = None, order_by: Sequence[tuple[TUserBookSortableCol, Literal['asc', 'desc']]] | None = None, take: int | None = None, skip: int | None = None) -> list[UserBook]:
-        raise NotImplementedError('Query generation is not implemented yet')
+        return self._backend.find_many(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, take=take, skip=skip)
 
     def find_first(self, *, where: UserBookWhereDict | None = None, include: dict[TUserBookIncludeCol, bool] | None = None, order_by: Sequence[tuple[TUserBookSortableCol, Literal['asc', 'desc']]] | None = None, skip: int | None = None) -> UserBook | None:
-        raise NotImplementedError('Query generation is not implemented yet')
+        return self._backend.find_first(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, skip=skip)
 
 class GeneratedClient:
     datasources = {
@@ -274,14 +280,16 @@ class GeneratedClient:
     }
 
     def __init__(self, connections: Mapping[str, Any]) -> None:
-        self._connections = connections
-        for key in self.datasources.keys():
+        self._connections: dict[str, BackendProtocol[Any, Any, Mapping[str, object]]] = {}
+        for key, config in self.datasources.items():
             if key not in connections:
                 raise KeyError(f'datasource {key} missing connection')
-        self.address = AddressTable(connections['sqlite'])
-        self.birth_day = BirthDayTable(connections['sqlite'])
-        self.book = BookTable(connections['sqlite'])
-        self.user = UserTable(connections['sqlite'])
-        self.user_book = UserBookTable(connections['sqlite'])
+            backend = create_backend(config.provider, connections[key])
+            self._connections[key] = backend
+        self.address = AddressTable(cast(BackendProtocol[Address, AddressInsert, AddressWhereDict], self._connections['sqlite']))
+        self.birth_day = BirthDayTable(cast(BackendProtocol[BirthDay, BirthDayInsert, BirthDayWhereDict], self._connections['sqlite']))
+        self.book = BookTable(cast(BackendProtocol[Book, BookInsert, BookWhereDict], self._connections['sqlite']))
+        self.user = UserTable(cast(BackendProtocol[User, UserInsert, UserWhereDict], self._connections['sqlite']))
+        self.user_book = UserBookTable(cast(BackendProtocol[UserBook, UserBookInsert, UserBookWhereDict], self._connections['sqlite']))
 
 __all__ = ("DataSourceConfig", "ForeignKeySpec", "GeneratedClient", "TAddressIncludeCol", "TAddressSortableCol", "AddressInsert", "AddressInsertDict", "AddressWhereDict", "AddressTable", "TBirthDayIncludeCol", "TBirthDaySortableCol", "BirthDayInsert", "BirthDayInsertDict", "BirthDayWhereDict", "BirthDayTable", "TBookIncludeCol", "TBookSortableCol", "BookInsert", "BookInsertDict", "BookWhereDict", "BookTable", "TUserIncludeCol", "TUserSortableCol", "UserInsert", "UserInsertDict", "UserWhereDict", "UserTable", "TUserBookIncludeCol", "TUserBookSortableCol", "UserBookInsert", "UserBookInsertDict", "UserBookWhereDict", "UserBookTable",)

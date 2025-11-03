@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import date, datetime
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from types import UnionType
+from typing import Annotated, Any, Callable, Iterable, Mapping, Sequence, get_args, get_origin
 
 from pypika import Query, Table
 from pypika.utils import format_quotes
@@ -23,7 +24,17 @@ TYPE_MAP: Mapping[type[Any], str] = {
 
 
 def _infer_sqlite_type(annotation: Any) -> str:
-    origin = getattr(annotation, "__origin__", None)
+    origin = get_origin(annotation)
+    if origin is UnionType or isinstance(annotation, UnionType):
+        args = [arg for arg in get_args(annotation) if arg is not type(None)]
+        if len(args) == 1:
+            return _infer_sqlite_type(args[0])
+        if not args:
+            return "TEXT"
+    if origin is Annotated:
+        inner_args = get_args(annotation)
+        if inner_args:
+            return _infer_sqlite_type(inner_args[0])
     if origin is None and isinstance(annotation, type):
         if annotation in TYPE_MAP:
             return TYPE_MAP[annotation]
@@ -37,8 +48,6 @@ def _infer_sqlite_type(annotation: Any) -> str:
             return "REAL"
     if origin in (list, set, tuple):
         return "TEXT"
-    if origin is None and annotation.__class__ is type:
-        return TYPE_MAP.get(annotation, "TEXT")
     return "TEXT"
 
 
