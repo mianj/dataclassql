@@ -49,6 +49,7 @@ def test_table_info():
     assert [idx.cols for idx in info.index] == [
         Col('name', table=User),
         Col('last_login', table=User),
+        (Col('name', table=User), Col('email', table=User)),
     ]
     assert [idx.cols for idx in info.unique_index] == [
         (Col('name', table=User), Col('email', table=User)),

@@ -134,6 +134,7 @@ class TableInfo:
                     spec = TableInfo._normalize_index_spec(uidx)
                     spec.unique()
                     unique_indexes.append(spec)
+        indexes.extend(unique_indexes)
         return TableInfo(
             index=indexes,
             primary_key=pk_spec,

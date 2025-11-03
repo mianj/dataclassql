@@ -9,36 +9,90 @@
 class User:
     id: int
     name: str
+    email: str | None
+    last_login: datetime
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    addresses: list[Address]
+
+    def index(self):
+        yield self.name
+        yield self.last_login, self.name # 复合索引
+        yield self.last_login
+
+
+@dataclass
+class Address:
+    id: int
+    location: str
+
+    user_id: int
+    user: User
+
+    def foreign_key(self): 
+        yield self.user.id == self.user_id, User.addresses
+
 ```
 
-在插入时理论上只需要一个 name 就足够插入, 而插入后则 id 一定存在, 如果我们只是把 id 标注为 int | None, 那么插入后或者查询后的 User 就需要额外对 id 判空, 如果标注为 int, 则插入前必须要指定一个 id. 
+在插入时理论上只需要一个 name、last_login 就足够插入, 而插入后则 id 一定存在, 如果我们只是把 id 标注为 int | None, 那么插入后或者查询后的 User 就需要额外对 id 判空, 如果标注为 int, 则插入前必须要指定一个 id. 
 
 因此要分成两步, 基于这样的 User 生成:
 ```
-@dataclass
-class UserInsertDC:
-    name: str
+T_User_include_col = Literal['Address']
+T_User_sortable_col = Literal['id', 'name', 'email', 'last_login', 'created_at']
 
-class UserInsertTD(TypeDict):
-    name: str
-
-class UserWhere(TypeDict):
+@dataclass(slots=True)
+class UserInsert:
     id: int | None
-    name: str | None
+    name: str
+    email : str | None
+    last_login: datetime
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+class UserInsertDict(TypedDict):
+    id: int | None
+    name: str
+    email : str | None
+    last_login: datetime
+    created_at: datetime
+
+class UserWhereDict(UserInsertDict, total=False):
+    ...
+
 
 class UserTable:
-    def insert(u: UserInsert) -> User:
-        pass
-    def where(args: UserWhere) -> User | None:
-        pass
+    model = User
+    insert_model = UserInsert
+    columns = ("id", "name")
+    primary_key = ("id",)
+
+    def insert(self, data: UserInsert | UserInsertDict) -> User: ...
+    def insert_many(self, data: Sequence[UserInsert | UserInsertDict]) -> list[User]: ...
+    def find_many(
+        self,
+        *,
+        where: UserWhereDict | None = None,
+        include: dict[T_User_include, bool] | None = None,
+        order_by: Sequence[tuple[T_User_sortable_col, Literal['asc', 'desc']]] | None = None,
+        take: int | None = None,
+        skip: int | None = None,
+    ) -> list[User]: ...
+    def find_first(
+        self,
+        *,
+        where: UserWhereDict | None = None,
+        include: dict[T_User_include, bool] | None = None,
+        order_by: Sequence[tuple[T_User_sortable_col, Literal['asc', 'desc']]] | None = None,
+        skip: int | None = None,
+    ) -> User | None: ...
 ```
 
 
 # 路线图
 
 - [x] 元编程工具集, 收集 dataclass 字段信息等
-- [ ] 基本的类型化代码生成
-
+- [x] 基本的类型化代码生成 (Insert/InsertDict + insert/insert_many/find_many/find_first)
+- [ ] sqlite 后端生成, 包括创建表, 创建索引, 生成查询语句等, 相关sql使用`pypika`生成
 
 # 设计
 
@@ -47,7 +101,8 @@ class UserTable:
 - 与 Prisma 类似的 n+1 机制, 可以在find系列函数里设置include=, 也可以不include, 但在获取对象时即时查询
 - 使用 fake self 机制获取主键、索引、外键、唯键等信息
 - 不依赖 fastlite, 只依赖 sqlite-utils
-- 初期仅支持 insert/insert_many/find_first/find_many 的代码生成. 相关类型标注参考 Prisma for Python
+- 初期仅支持 `insert` / `insert_many` / `find_many` / `find_first` 的代码生成. Insert 支持 dataclass 与 TypedDict 两种结构
+- 生成结果包含 `ForeignKeySpec` 描述外键、`*Insert` dataclass、`*InsertDict*` TypedDict 组合、具体的 `*Table` 表访问类以及聚合的 `GeneratedClient`
 
 ## 期待的样例
 
@@ -124,8 +179,10 @@ class UserBook:
     def index(self):
         yield self.created_at
 
-    def foreign_keys(self):
+    def foreign_key(self):
         yield self.user.id == self.user_id, User.books # 这两个含义跟 address 相同
         yield self.book.id == self.book_id, Book.users
 
 ```
+
+生成的客户端中, 还会包含 `GeneratedClient` 类, 构造时把所有表的 `*Table` 实例挂到蛇形命名的属性上, 方便业务方直接调用。
