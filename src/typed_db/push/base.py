@@ -2,14 +2,24 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence, Tuple
 
 from pypika import Query, Table
-from pypika.queries import Column, CreateQueryBuilder
+from pypika.queries import Column
 from pypika.terms import Index as PypikaIndex
 
 from ..model_inspector import ColumnInfo, ModelInfo
 from ..table_spec import TableInfo
+
+
+@dataclass(slots=True, frozen=True)
+class ColumnDeclaration:
+    name: str
+    type_sql: str
+    definition_sql: str
+    not_null: bool
+    primary_key: bool
+    auto_increment: bool
 
 
 @dataclass(slots=True, frozen=True)
@@ -19,33 +29,79 @@ class IndexDefinition:
     unique: bool
 
 
+@dataclass(slots=True, frozen=True)
+class SchemaPlan:
+    create_sql: str
+    columns: tuple[ColumnDeclaration, ...]
+    indexes: tuple[IndexDefinition, ...]
+
+
+@dataclass(slots=True, frozen=True)
+class ExistingColumn:
+    name: str
+    type_sql: str
+    not_null: bool
+    primary_key: bool
+
+
+@dataclass(slots=True, frozen=True)
+class ColumnChange:
+    name: str
+    current: ExistingColumn
+    expected: ColumnDeclaration
+    reasons: tuple[str, ...]
+
+
+@dataclass(slots=True, frozen=True)
+class SchemaDiff:
+    added: tuple[ColumnDeclaration, ...]
+    removed: tuple[ExistingColumn, ...]
+    changed: tuple[ColumnChange, ...]
+
+    def is_empty(self) -> bool:
+        return not self.added and not self.removed and not self.changed
+
+
 class SchemaBuilder(ABC):
     quote_char: str = '"'
 
     def __init__(self, info: ModelInfo) -> None:
         self.info = info
         self.table_info = TableInfo.from_dc(info.model)
+        self._column_declarations: list[ColumnDeclaration] = []
+        self._table_name_override: str | None = None
 
-    def build(self) -> tuple[str, list[IndexDefinition]]:
-        create_sql = self.render_create_table_sql()
-        index_definitions = self.render_index_definitions()
-        return create_sql, index_definitions
+    def build(self, *, table_name: str | None = None) -> SchemaPlan:
+        previous = self._table_name_override
+        self._table_name_override = table_name
+        try:
+            create_sql = self.render_create_table_sql()
+            index_definitions = self.render_index_definitions()
+            return SchemaPlan(
+                create_sql=create_sql,
+                columns=tuple(self._column_declarations),
+                indexes=tuple(index_definitions),
+            )
+        finally:
+            self._table_name_override = previous
 
     def render_create_table_sql(self) -> str:
-        builder: CreateQueryBuilder = Query.create_table(self.table_name).if_not_exists()
+        self._column_declarations = []
+        builder = Query.create_table(self.table_name).if_not_exists()
 
         pk_cols = self._normalize_col_names(self.table_info.primary_key.col_name())
         pk_set = set(pk_cols)
         single_inline_pk = self._has_inline_primary_key(pk_cols)
 
         for column in self.info.columns:
-            column_sql = self.render_column_definition(
+            declaration = self.render_column_declaration(
                 column=column,
                 pk_columns=pk_cols,
                 pk_members=pk_set,
                 single_inline_pk=single_inline_pk,
             )
-            builder = builder.columns(self.make_column(column.name, column_sql))
+            self._column_declarations.append(declaration)
+            builder = builder.columns(self.make_column(column.name, declaration.definition_sql))
 
         seen_unique: set[tuple[str, ...]] = set()
         for spec in self.table_info.unique_index:
@@ -61,7 +117,7 @@ class SchemaBuilder(ABC):
             elif len(pk_cols) > 1:
                 builder = builder.primary_key(*pk_cols)
 
-        return builder.get_sql(quote_char=self.quote_char) + ";"
+        return builder.get_sql(quote_char=self.quote_char) + ';'
 
     def render_index_definitions(self) -> list[IndexDefinition]:
         definitions: list[IndexDefinition] = []
@@ -85,30 +141,47 @@ class SchemaBuilder(ABC):
     def make_column(self, name: str, definition: str) -> Column:
         return Column(name, definition)
 
-    def render_column_definition(
+    def render_column_declaration(
         self,
         *,
         column: ColumnInfo,
         pk_columns: tuple[str, ...],
         pk_members: set[str],
         single_inline_pk: bool,
-    ) -> str:
+    ) -> ColumnDeclaration:
         sql_type = self.resolve_column_type(column.python_type)
         if self.use_inline_primary_key(
             column=column,
             pk_columns=pk_columns,
             sql_type=sql_type,
         ):
-            return self.inline_primary_key_definition(sql_type)
+            definition_sql = self.inline_primary_key_definition(sql_type)
+            return ColumnDeclaration(
+                name=column.name,
+                type_sql=sql_type,
+                definition_sql=definition_sql,
+                not_null=False,
+                primary_key=True,
+                auto_increment=True,
+            )
 
-        column_def = sql_type
-        if self.include_not_null(
+        not_null = self.include_not_null(
             column,
             pk_members=pk_members,
             single_inline_pk=single_inline_pk,
-        ):
-            column_def = self.append_not_null(column_def)
-        return column_def
+        )
+        definition_sql = sql_type
+        if not_null:
+            definition_sql = self.append_not_null(definition_sql)
+        primary_key = column.name in pk_members
+        return ColumnDeclaration(
+            name=column.name,
+            type_sql=sql_type,
+            definition_sql=definition_sql,
+            not_null=not_null,
+            primary_key=primary_key,
+            auto_increment=False,
+        )
 
     def include_not_null(
         self,
@@ -124,27 +197,27 @@ class SchemaBuilder(ABC):
         return not column.optional
 
     def make_index_name(self, columns: tuple[str, ...], *, unique: bool) -> str:
-        suffix = "_".join(columns)
-        prefix = "uq" if unique else "idx"
-        return f"{prefix}_{self.table_name}_{suffix}"
+        suffix = '_'.join(columns)
+        prefix = 'uq' if unique else 'idx'
+        return f'{prefix}_{self.table_name}_{suffix}'
 
     def create_index_sql(self, definition: IndexDefinition) -> str:
         table = Table(self.table_name)
         index = PypikaIndex(definition.name)
-        columns_sql = ", ".join(
+        columns_sql = ', '.join(
             table.field(column).get_sql(quote_char=self.quote_char) for column in definition.columns
         )
-        unique_keyword = "UNIQUE " if definition.unique else ""
+        unique_keyword = 'UNIQUE ' if definition.unique else ''
         index_sql = (
-            f"CREATE {unique_keyword}INDEX IF NOT EXISTS "
-            f"{index.get_sql(quote_char=self.quote_char)} "
-            f"ON {table.get_sql(quote_char=self.quote_char)} ({columns_sql});"
+            f'CREATE {unique_keyword}INDEX IF NOT EXISTS '
+            f'{index.get_sql(quote_char=self.quote_char)} '
+            f'ON {table.get_sql(quote_char=self.quote_char)} ({columns_sql});'
         )
         return index_sql
 
     def drop_index_sql(self, index_name: str) -> str:
         index = PypikaIndex(index_name)
-        return f"DROP INDEX IF EXISTS {index.get_sql(quote_char=self.quote_char)};"
+        return f'DROP INDEX IF EXISTS {index.get_sql(quote_char=self.quote_char)};'
 
     def _has_inline_primary_key(self, pk_columns: tuple[str, ...]) -> bool:
         if len(pk_columns) != 1:
@@ -170,6 +243,8 @@ class SchemaBuilder(ABC):
 
     @property
     def table_name(self) -> str:
+        if self._table_name_override is not None:
+            return self._table_name_override
         return self.info.model.__name__
 
     @abstractmethod
@@ -188,10 +263,10 @@ class SchemaBuilder(ABC):
         return False
 
     def inline_primary_key_definition(self, sql_type: str) -> str:
-        raise NotImplementedError("Inline primary key definition not supported for this backend")
+        raise NotImplementedError('Inline primary key definition not supported for this backend')
 
     def append_not_null(self, definition: str) -> str:
-        return f"{definition} NOT NULL"
+        return f'{definition} NOT NULL'
 
 
 class DatabasePusher(ABC):
@@ -205,33 +280,138 @@ class DatabasePusher(ABC):
     def execute_statements(self, conn: Any, statements: Iterable[str]) -> None:
         ...
 
+    @abstractmethod
+    def table_exists(self, conn: Any, info: ModelInfo) -> bool:
+        ...
+
+    @abstractmethod
+    def inspect_existing_schema(self, conn: Any, info: ModelInfo) -> tuple[ExistingColumn, ...] | None:
+        ...
+
+    def calculate_diff(self, existing: tuple[ExistingColumn, ...], expected: SchemaPlan) -> SchemaDiff:
+        existing_map = {column.name: column for column in existing}
+        expected_map = {column.name: column for column in expected.columns}
+
+        added = [column for column in expected.columns if column.name not in existing_map]
+        removed = [column for column in existing if column.name not in expected_map]
+
+        changed: list[ColumnChange] = []
+        for name, current in existing_map.items():
+            target = expected_map.get(name)
+            if target is None:
+                continue
+            reasons: list[str] = []
+            if current.type_sql.upper() != target.type_sql.upper():
+                reasons.append(f"type {current.type_sql} -> {target.type_sql}")
+            if current.not_null != target.not_null:
+                reasons.append(f"not_null {current.not_null} -> {target.not_null}")
+            if current.primary_key != target.primary_key:
+                reasons.append(f"primary_key {current.primary_key} -> {target.primary_key}")
+            if reasons:
+                changed.append(
+                    ColumnChange(
+                        name=name,
+                        current=current,
+                        expected=target,
+                        reasons=tuple(reasons),
+                    )
+                )
+
+        return SchemaDiff(
+            added=tuple(added),
+            removed=tuple(removed),
+            changed=tuple(changed),
+        )
+
+    def format_diff_message(self, info: ModelInfo, diff: SchemaDiff) -> str:
+        parts: list[str] = [f"模型 {info.model.__name__} 需要重建表"]
+        if diff.added:
+            added_desc = ", ".join(f"+{col.name}:{col.type_sql}" for col in diff.added)
+            parts.append(f"新增列: {added_desc}")
+        if diff.removed:
+            removed_desc = ", ".join(f"-{col.name}:{col.type_sql}" for col in diff.removed)
+            parts.append(f"删除列: {removed_desc}")
+        if diff.changed:
+            changed_desc = ", ".join(
+                f"~{change.name}({'; '.join(change.reasons)})" for change in diff.changed
+            )
+            parts.append(f"变更列: {changed_desc}")
+        return "; ".join(parts)
+
+    @abstractmethod
+    def rebuild_table(
+        self,
+        conn: Any,
+        info: ModelInfo,
+        builder: SchemaBuilder,
+        plan: SchemaPlan,
+        existing_schema: tuple[ExistingColumn, ...] | None,
+        diff: SchemaDiff,
+    ) -> None:
+        ...
+
     def is_system_index(self, name: str) -> bool:
         return False
 
     def validate_connection(self, conn: Any) -> None:
         return None
 
-    def push(self, conn: Any, infos: Sequence[ModelInfo], *, sync_indexes: bool = False) -> None:
+    def push(
+        self,
+        conn: Any,
+        infos: Sequence[ModelInfo],
+        *,
+        sync_indexes: bool = False,
+        confirm_rebuild: Callable[[ModelInfo, SchemaPlan, tuple[ExistingColumn, ...] | None, SchemaDiff], bool] | None = None,
+    ) -> None:
         self.validate_connection(conn)
         for info in infos:
             builder = self.schema_builder_cls(info)
-            create_sql, index_definitions = builder.build()
-            statements: list[str] = [create_sql]
+            plan = builder.build()
 
-            existing_indexes = self.fetch_existing_indexes(conn, info)
-            expected_names = {definition.name for definition in index_definitions}
+            if not self.table_exists(conn, info):
+                self.execute_statements(conn, [plan.create_sql])
+            else:
+                existing_schema = self.inspect_existing_schema(conn, info)
+                if existing_schema is None:
+                    diff = SchemaDiff(added=plan.columns, removed=tuple(), changed=tuple())
+                else:
+                    diff = self.calculate_diff(existing_schema, plan)
 
-            if sync_indexes:
-                for index_name in sorted(existing_indexes):
-                    if self.is_system_index(index_name):
-                        continue
-                    if index_name in expected_names:
-                        continue
-                    statements.append(builder.drop_index_sql(index_name))
+                if existing_schema is None or not diff.is_empty():
+                    if confirm_rebuild is None:
+                        raise RuntimeError(self.format_diff_message(info, diff))
+                    if not confirm_rebuild(info, plan, existing_schema, diff):
+                        raise RuntimeError(self.format_diff_message(info, diff))
+                    self.rebuild_table(conn, info, builder, plan, existing_schema, diff)
 
-            for definition in index_definitions:
-                if definition.name in existing_indexes:
+            self._sync_indexes(conn, info, builder, plan.indexes, sync_indexes)
+
+    def _sync_indexes(
+        self,
+        conn: Any,
+        info: ModelInfo,
+        builder: SchemaBuilder,
+        index_definitions: Tuple[IndexDefinition, ...],
+        sync_indexes: bool,
+    ) -> None:
+        existing_indexes = self.fetch_existing_indexes(conn, info)
+        expected_names = {definition.name for definition in index_definitions}
+
+        statements: list[str] = []
+
+        if sync_indexes:
+            for index_name in sorted(existing_indexes):
+                if self.is_system_index(index_name):
                     continue
-                statements.append(builder.create_index_sql(definition))
+                if index_name in expected_names:
+                    continue
+                statements.append(builder.drop_index_sql(index_name))
 
+        for definition in index_definitions:
+            if definition.name in existing_indexes:
+                continue
+            statements.append(builder.create_index_sql(definition))
+
+        if statements:
             self.execute_statements(conn, statements)

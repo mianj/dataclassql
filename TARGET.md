@@ -97,7 +97,7 @@ class UserTable:
 - [x] 元编程工具集, 收集 dataclass 字段信息等
 - [x] 基本的类型化代码生成 (Insert/InsertDict + insert/insert_many/find_many/find_first)
 - [ ] sqlite 后端:
-    - [ ] 对应 prisma db push 的功能, 如: 创建表, 创建索引, 变更表结构和变更索引等
+    - [x] 对应 prisma db push 的功能, 如: 创建表, 创建索引, 变更表结构和变更索引等
     - [ ] 运行时查询和插入等功能
 
 # 设计

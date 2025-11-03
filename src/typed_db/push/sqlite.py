@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import date, datetime
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
+
+from pypika import Query, Table
+from pypika.utils import format_quotes
 
 from ..model_inspector import ColumnInfo, ModelInfo
-from .base import DatabasePusher, SchemaBuilder
+from .base import DatabasePusher, ExistingColumn, SchemaBuilder, SchemaDiff, SchemaPlan
 
 
 TYPE_MAP: Mapping[type[Any], str] = {
@@ -71,6 +74,30 @@ class SQLitePusher(DatabasePusher):
         if not isinstance(conn, sqlite3.Connection):
             raise TypeError("SQLite connections must be sqlite3.Connection")
 
+    def table_exists(self, conn: sqlite3.Connection, info: ModelInfo) -> bool:
+        cur = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (info.model.__name__,),
+        )
+        return cur.fetchone() is not None
+
+    def inspect_existing_schema(self, conn: sqlite3.Connection, info: ModelInfo) -> tuple[ExistingColumn, ...] | None:
+        table_name = info.model.__name__
+        quoted = format_quotes(table_name, '"')
+        rows = conn.execute(f"PRAGMA table_info({quoted})").fetchall()
+        if not rows:
+            return None
+        columns = [
+            ExistingColumn(
+                name=row[1],
+                type_sql=row[2],
+                not_null=bool(row[3]),
+                primary_key=bool(row[5]),
+            )
+            for row in rows
+        ]
+        return tuple(columns)
+
     def fetch_existing_indexes(self, conn: sqlite3.Connection, info: ModelInfo) -> set[str]:
         cur = conn.execute(
             "SELECT name FROM sqlite_master WHERE type IN ('index','unique') AND tbl_name = ?",
@@ -86,17 +113,67 @@ class SQLitePusher(DatabasePusher):
     def is_system_index(self, name: str) -> bool:
         return name.startswith("sqlite_")
 
+    def rebuild_table(
+        self,
+        conn: sqlite3.Connection,
+        info: ModelInfo,
+        builder: SchemaBuilder,
+        plan: SchemaPlan,
+        existing_schema: tuple[ExistingColumn, ...] | None,
+        diff: SchemaDiff,
+    ) -> None:
+        table_name = builder.table_name
+        temp_table = f"{table_name}__tmp"
+
+        temp_plan = builder.build(table_name=temp_table)
+
+        statements: list[str] = []
+        drop_temp_sql = Query.drop_table(temp_table).if_exists().get_sql(quote_char=builder.quote_char) + ';'
+        statements.append(drop_temp_sql)
+        statements.append(temp_plan.create_sql)
+
+        existing_columns = {column.name for column in existing_schema or ()}
+        transfer_columns = [
+            declaration.name
+            for declaration in plan.columns
+            if declaration.name in existing_columns
+        ]
+
+        if transfer_columns:
+            temp_ref = Table(temp_table)
+            original_ref = Table(table_name)
+            insert_sql = (
+                Query.into(temp_ref)
+                .columns(*transfer_columns)
+                .from_(original_ref)
+                .select(*(original_ref.field(name) for name in transfer_columns))
+                .get_sql(quote_char=builder.quote_char)
+                + ';'
+            )
+            statements.append(insert_sql)
+
+        drop_original_sql = Query.drop_table(table_name).if_exists().get_sql(quote_char=builder.quote_char) + ';'
+        statements.append(drop_original_sql)
+
+        rename_sql = (
+            f"ALTER TABLE {format_quotes(temp_table, builder.quote_char)} "
+            f"RENAME TO {format_quotes(table_name, builder.quote_char)};"
+        )
+        statements.append(rename_sql)
+
+        self.execute_statements(conn, statements)
+
 
 SQLITE_PUSHER = SQLitePusher()
 
 
 def _build_sqlite_schema(info: ModelInfo) -> tuple[str, list[tuple[str, str]]]:
     builder = SQLiteSchemaBuilder(info)
-    create_sql, index_definitions = builder.build()
+    plan = builder.build()
     index_entries: list[tuple[str, str]] = [
-        (definition.name, builder.create_index_sql(definition)) for definition in index_definitions
+        (definition.name, builder.create_index_sql(definition)) for definition in plan.indexes
     ]
-    return create_sql, index_entries
+    return plan.create_sql, index_entries
 
 
 def push_sqlite(
@@ -104,5 +181,6 @@ def push_sqlite(
     infos: Sequence[ModelInfo],
     *,
     sync_indexes: bool = False,
+    confirm_rebuild: Callable[[ModelInfo, SchemaPlan, tuple[ExistingColumn, ...] | None, SchemaDiff], bool] | None = None,
 ) -> None:
-    SQLITE_PUSHER.push(conn, infos, sync_indexes=sync_indexes)
+    SQLITE_PUSHER.push(conn, infos, sync_indexes=sync_indexes, confirm_rebuild=confirm_rebuild)

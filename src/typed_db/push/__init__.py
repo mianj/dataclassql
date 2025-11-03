@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from ..model_inspector import ModelInfo, inspect_models
-from .base import DatabasePusher
+from .base import DatabasePusher, ExistingColumn, SchemaDiff, SchemaPlan
 from .sqlite import SQLITE_PUSHER, SQLitePusher, push_sqlite, _build_sqlite_schema
 
 _PUSHER_REGISTRY: dict[str, DatabasePusher] = {
@@ -26,6 +26,7 @@ def db_push(
     connections: Mapping[str, Any],
     *,
     sync_indexes: bool = False,
+    confirm_rebuild: Callable[[ModelInfo, SchemaPlan, tuple[ExistingColumn, ...] | None, SchemaDiff], bool] | None = None,
 ) -> None:
     model_infos = inspect_models(models)
     grouped: dict[str, list[ModelInfo]] = {}
@@ -37,7 +38,12 @@ def db_push(
             raise KeyError(f"Connection for provider '{provider}' is missing")
         pusher = get_pusher(provider)
         connection = connections[provider]
-        pusher.push(connection, infos, sync_indexes=sync_indexes)
+        pusher.push(
+            connection,
+            infos,
+            sync_indexes=sync_indexes,
+            confirm_rebuild=confirm_rebuild,
+        )
 
 
 __all__ = [

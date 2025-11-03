@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
+import pytest
+
 __datasource__ = {
     "provider": "sqlite",
     "url": "sqlite:///test.db",
@@ -92,3 +94,120 @@ def test_db_push_sync_indexes_aligns_with_model():
         "idx_User_created_at",
         "uq_User_email",
     }
+
+
+def test_db_push_rebuild_requires_confirmation():
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        'CREATE TABLE "User" '
+        '("id" INTEGER PRIMARY KEY AUTOINCREMENT,"name" TEXT NOT NULL)'
+    )
+
+    with pytest.raises(RuntimeError) as exc:
+        db_push([User], {"sqlite": conn})
+
+    assert "新增列" in str(exc.value)
+
+
+def test_db_push_rebuilds_table_and_preserves_rows():
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        'CREATE TABLE "User" '
+        '("id" INTEGER PRIMARY KEY AUTOINCREMENT,"name" TEXT NOT NULL,'
+        '"created_at" TEXT NOT NULL)'
+    )
+    conn.execute(
+        'INSERT INTO "User" ("name","created_at") VALUES (?, ?)',
+        ("Alice", "2024-01-01T12:00:00"),
+    )
+
+    captured_diff: dict[str, tuple[str, ...]] = {}
+
+    def approve_rebuild(info, plan, existing, diff):
+        captured_diff["added"] = tuple(column.name for column in diff.added)
+        captured_diff["removed"] = tuple(column.name for column in diff.removed)
+        captured_diff["changed"] = tuple(change.name for change in diff.changed)
+        return True
+
+    db_push([User], {"sqlite": conn}, confirm_rebuild=approve_rebuild)
+
+    columns = conn.execute('PRAGMA table_info("User")').fetchall()
+    column_names = [name for (_, name, *_rest) in columns]
+    assert column_names == ["id", "name", "email", "created_at"]
+
+    assert captured_diff["added"] == ("email",)
+    assert captured_diff["removed"] == ()
+    assert captured_diff["changed"] == ()
+
+    rows = conn.execute('SELECT id,name,email,created_at FROM "User"').fetchall()
+    assert rows == [(1, "Alice", None, "2024-01-01T12:00:00")]
+
+    index_entries = conn.execute('PRAGMA index_list("User")').fetchall()
+    index_names = {entry[1] for entry in index_entries if not entry[1].startswith("sqlite_")}
+    assert index_names == {
+        "idx_User_name",
+        "idx_User_created_at",
+        "uq_User_email",
+    }
+
+
+def test_db_push_rebuild_drops_extra_columns():
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        'CREATE TABLE "User" '
+        '("id" INTEGER PRIMARY KEY AUTOINCREMENT,"name" TEXT NOT NULL,'
+        '"email" TEXT,"created_at" TEXT NOT NULL,"legacy" TEXT)'
+    )
+    conn.execute(
+        'INSERT INTO "User" ("name","email","created_at","legacy") VALUES (?,?,?,?)',
+        ("Bob", "bob@example.com", "2024-02-02T00:00:00", "old"),
+    )
+
+    def approve(_, __, ___, diff):
+        assert tuple(column.name for column in diff.removed) == ("legacy",)
+        return True
+
+    db_push([User], {"sqlite": conn}, confirm_rebuild=approve)
+
+    columns = conn.execute('PRAGMA table_info("User")').fetchall()
+    column_names = [name for (_, name, *_rest) in columns]
+    assert column_names == ["id", "name", "email", "created_at"]
+
+    restored = conn.execute('SELECT name,email,created_at FROM "User"').fetchall()
+    assert restored == [("Bob", "bob@example.com", "2024-02-02T00:00:00")]
+
+
+def test_db_push_rebuild_detects_column_type_change():
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        'CREATE TABLE "User" '
+        '("id" INTEGER PRIMARY KEY AUTOINCREMENT,"name" INTEGER NOT NULL,'
+        '"email" TEXT,"created_at" TEXT NOT NULL)'
+    )
+
+    def approve(_, __, ___, diff):
+        changed = {change.name: change.reasons for change in diff.changed}
+        assert changed == {"name": ("type INTEGER -> TEXT",)}
+        return True
+
+    db_push([User], {"sqlite": conn}, confirm_rebuild=approve)
+
+    column_info = conn.execute('PRAGMA table_info("User")').fetchall()
+    types = {name: typ for (_, name, typ, *_rest) in column_info}
+    assert types["name"] == "TEXT"
+
+
+def test_db_push_rebuild_callback_can_abort():
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        'CREATE TABLE "User" '
+        '("id" INTEGER PRIMARY KEY AUTOINCREMENT,"name" TEXT NOT NULL)'
+    )
+
+    def reject(*_args):
+        return False
+
+    with pytest.raises(RuntimeError) as exc:
+        db_push([User], {"sqlite": conn}, confirm_rebuild=reject)
+
+    assert "模型 User" in str(exc.value)
