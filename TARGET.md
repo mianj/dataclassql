@@ -96,9 +96,10 @@ class UserTable:
 
 - [x] 元编程工具集, 收集 dataclass 字段信息等
 - [x] 基本的类型化代码生成 (Insert/InsertDict + insert/insert_many/find_many/find_first)
-- [ ] sqlite 后端:
+- [x] sqlite 后端:
     - [x] 对应 prisma db push 的功能, 如: 创建表, 创建索引, 变更表结构和变更索引等
-    - [ ] 运行时查询和插入等功能
+    - [x] 运行时查询和插入等功能
+- [x] 命令行接口包括: `typed-db -m {model py file} push-db`、`typed-db -m {model py file} generate`, model py file 默认名为`model.py`
 
 # 设计
 
