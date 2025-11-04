@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from dclassql.cli import DEFAULT_MODEL_FILE, main, resolve_generated_path
+from dclassql.cli import DEFAULT_MODEL_FILE, compute_model_target, main, resolve_generated_path
 
 
 MODEL_TEMPLATE = """
@@ -49,12 +49,15 @@ def test_generate_command_outputs_code(tmp_path: Path, capsys: pytest.CaptureFix
     db_path = tmp_path / "example.db"
     module_path = write_model(tmp_path, db_path)
     target = resolve_generated_path()
+    model_target, _ = compute_model_target(module_path)
+    model_init = model_target.parent / "__init__.py"
     backup = target.read_text(encoding="utf-8") if target.exists() else None
     exit_code = main(["-m", str(module_path), "generate"])
     assert exit_code == 0
     captured = capsys.readouterr()
     assert str(target) in captured.out
     assert target.exists()
+    assert model_target.exists()
     code = target.read_text(encoding="utf-8")
     assert "class Client" in code
     assert "class UserTable" in code
@@ -63,6 +66,12 @@ def test_generate_command_outputs_code(tmp_path: Path, capsys: pytest.CaptureFix
         target.unlink(missing_ok=True)
     else:
         target.write_text(backup, encoding="utf-8")
+    if model_target.exists() or model_target.is_symlink():
+        model_target.unlink()
+    if model_init.exists() and not any(
+        p.name != "__init__.py" for p in model_target.parent.glob("*.py")
+    ):
+        model_init.unlink(missing_ok=True)
 
 
 def test_push_db_command_creates_schema(tmp_path: Path) -> None:

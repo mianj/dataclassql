@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import re
+import shutil
 import sys
+import warnings
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Sequence
@@ -13,6 +16,8 @@ from .runtime.datasource import open_sqlite_connection
 
 
 DEFAULT_MODEL_FILE = "model.py"
+GENERATED_CLIENT_FILENAME = "client.py"
+GENERATED_MODELS_DIRNAME = "generated_models"
 
 
 def load_module(module_path: Path) -> ModuleType:
@@ -33,12 +38,52 @@ def load_module(module_path: Path) -> ModuleType:
     return module
 
 
-def resolve_generated_path() -> Path:
+def _find_package_directory() -> Path:
     spec = importlib.util.find_spec("dclassql")
     if spec is None or not spec.submodule_search_locations:
         raise RuntimeError("Cannot locate installed dclassql package to write generated client")
-    package_dir = Path(next(iter(spec.submodule_search_locations))).resolve()
-    return package_dir / "client.py"
+    return Path(next(iter(spec.submodule_search_locations))).resolve()
+
+
+def resolve_generated_path() -> Path:
+    return _find_package_directory() / GENERATED_CLIENT_FILENAME
+
+
+def resolve_models_directory() -> Path:
+    return _find_package_directory() / GENERATED_MODELS_DIRNAME
+
+
+def _sanitize_name(name: str) -> str:
+    sanitized = re.sub(r"[^0-9a-zA-Z_]+", "_", name).strip("_")
+    return sanitized.lower() or "models"
+
+
+def compute_model_target(module_path: Path) -> tuple[Path, str]:
+    base_dir = resolve_models_directory()
+    base_dir.mkdir(parents=True, exist_ok=True)
+    (base_dir / "__init__.py").touch()
+
+    module_name = _sanitize_name(module_path.stem)
+
+    target_path = base_dir / f"{module_name}.py"
+    import_path = f"dclassql.{GENERATED_MODELS_DIRNAME}.{module_name}"
+    return target_path, import_path
+
+
+def materialize_model_module(module_path: Path) -> str:
+    target_path, import_path = compute_model_target(module_path)
+    if target_path.exists() or target_path.is_symlink():
+        target_path.unlink()
+    try:
+        target_path.symlink_to(module_path.resolve())
+    except OSError as exc:
+        warnings.warn(
+            f"Unable to create symlink for model '{module_path}'; falling back to copy. ({exc})",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        shutil.copy2(module_path, target_path)
+    return import_path
 
 
 def collect_models(module: ModuleType) -> list[type[Any]]:
@@ -82,7 +127,13 @@ def push_database(models: Sequence[type[Any]]) -> None:
 def command_generate(module_path: Path) -> None:
     module = load_module(module_path)
     models = collect_models(module)
+    generated_models_module = materialize_model_module(module_path)
+    original_modules = {model: model.__module__ for model in models}
+    for model in models:
+        model.__module__ = generated_models_module
     generated = generate_client(models)
+    for model, original in original_modules.items():
+        model.__module__ = original
     output_path = resolve_generated_path()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(generated.code, encoding="utf-8")
