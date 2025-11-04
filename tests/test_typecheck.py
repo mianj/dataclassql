@@ -33,9 +33,9 @@ def test_pyright_reports_missing_required_field(tmp_path: Path) -> None:
     snippet = tmp_path / "snippet.py"
     snippet.write_text(
         """
-from client_module import GeneratedClient
+from client_module import Client
 
-client = GeneratedClient()
+client = Client()
 client.user.insert({"name": "Alice", "email": "a@example.com"})
 client.user.insert({"email": "missing"})
 """,

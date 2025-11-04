@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 import sys
 import types
 from datetime import datetime
@@ -44,7 +43,7 @@ def _build_client() -> tuple[dict[str, Any], Any]:
     module = generate_client([RuntimeUser])
     namespace: dict[str, Any] = {}
     exec(module.code, namespace)
-    generated_client = namespace["GeneratedClient"]
+    generated_client = namespace["Client"]
     client = generated_client()
     return namespace, client
 
@@ -126,7 +125,7 @@ def test_backend_thread_local(tmp_path: Path):
     user_table.insert(InsertModel(id=None, name="Eve", email=None))
 
     def worker() -> int | None:
-        other_client = namespace["GeneratedClient"]()
+        other_client = namespace["Client"]()
         try:
             record = other_client.runtime_user.find_first(order_by=[("name", "asc")])
             return record.id if record else None
@@ -217,7 +216,7 @@ def test_lazy_relations(tmp_path: Path):
 
     sys.modules[module_name] = module
     generated_module_name = "tests.generated_relations"
-    GeneratedClient: type[Any] | None = None
+    ClientClass: type[Any] | None = None
     try:
         module_generated = generate_client([LazyUser, LazyBirthDay, LazyAddress])
         generated_module = types.ModuleType(generated_module_name)
@@ -225,10 +224,10 @@ def test_lazy_relations(tmp_path: Path):
         namespace["__name__"] = generated_module_name
         sys.modules[generated_module_name] = generated_module
         exec(module_generated.code, namespace)
-        GeneratedClient = cast(type[Any], namespace["GeneratedClient"])
+        ClientClass = cast(type[Any], namespace["Client"])
         with open_sqlite_connection(f"sqlite:///{db_path.as_posix()}") as conn_setup:
             db_push([namespace["LazyUser"], namespace["LazyBirthDay"], namespace["LazyAddress"]], {"sqlite": conn_setup})
-        client = GeneratedClient()
+        client = ClientClass()
 
         client.lazy_user.insert({"id": 1, "name": "Alice"})
         client.lazy_birth_day.insert({"user_id": 1, "date": datetime(1990, 1, 1)})
@@ -261,7 +260,7 @@ def test_lazy_relations(tmp_path: Path):
         assert str(first_user.birthday.date).startswith("1990-01-01")
 
     finally:
-        if GeneratedClient is not None:
-            GeneratedClient.close_all()
+        if ClientClass is not None:
+            ClientClass.close_all()
         sys.modules.pop(generated_module_name, None)
         sys.modules.pop(module_name, None)

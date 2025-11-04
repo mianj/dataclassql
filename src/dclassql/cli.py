@@ -9,7 +9,7 @@ from typing import Any, Sequence
 
 from .codegen import generate_client
 from .push import db_push
-from .runtime.datasource import open_sqlite_connection, resolve_sqlite_path
+from .runtime.datasource import open_sqlite_connection
 
 
 DEFAULT_MODEL_FILE = "model.py"
@@ -31,6 +31,14 @@ def load_module(module_path: Path) -> ModuleType:
     finally:
         sys.path.pop(0)
     return module
+
+
+def resolve_generated_path() -> Path:
+    spec = importlib.util.find_spec("dclassql")
+    if spec is None or not spec.submodule_search_locations:
+        raise RuntimeError("Cannot locate installed dclassql package to write generated client")
+    package_dir = Path(next(iter(spec.submodule_search_locations))).resolve()
+    return package_dir / "client.py"
 
 
 def collect_models(module: ModuleType) -> list[type[Any]]:
@@ -75,8 +83,8 @@ def command_generate(module_path: Path) -> None:
     module = load_module(module_path)
     models = collect_models(module)
     generated = generate_client(models)
-    target_dir = Path(__file__).resolve().parent
-    output_path = target_dir / "generated.py"
+    output_path = resolve_generated_path()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(generated.code, encoding="utf-8")
     sys.stdout.write(f"Client written to {output_path}\n")
 

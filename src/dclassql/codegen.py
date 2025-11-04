@@ -314,7 +314,7 @@ def _render_default_fragment(model_name: str, col: ColumnInfo) -> str | None:
 
 def _render_client_class(model_infos: Mapping[str, ModelInfo]) -> str:
     indent = "    "
-    lines = ["class GeneratedClient(BaseDBPool):"]
+    lines = ["class Client(BaseDBPool):"]
     datasource_configs: dict[str, DataSourceConfig] = {}
     for info in model_infos.values():
         datasource = info.datasource
@@ -381,7 +381,7 @@ def _render_client_class(model_infos: Mapping[str, ModelInfo]) -> str:
 
 
 def _render_all(model_infos: Mapping[str, ModelInfo]) -> str:
-    exports: list[str] = ["DataSourceConfig", "ForeignKeySpec", "GeneratedClient"]
+    exports: list[str] = ["DataSourceConfig", "ForeignKeySpec", "Client"]
     for name in sorted(model_infos.keys()):
         exports.extend([
             f"T{name}IncludeCol",

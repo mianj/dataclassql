@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, Mapping, NotRequired, get_args, get_origin, get_type_hints
 
+from dclassql.cli import resolve_generated_path
 from dclassql.codegen import generate_client
 from dclassql.runtime.backends import SQLiteBackend
 
@@ -109,7 +110,7 @@ def test_generate_client_matches_expected_shape() -> None:
     assert 'DataSourceConfig' in namespace['__all__']
 
     data_source_config = namespace['DataSourceConfig']
-    generated_client = namespace['GeneratedClient']
+    generated_client = namespace['Client']
 
     include_alias = namespace['TUserIncludeCol']
     assert get_origin(include_alias) is Literal
@@ -272,7 +273,7 @@ def test_generated_client_supports_named_datasources() -> None:
         module = generate_client([PrimaryUser, SecondaryUser])
         exec(module.code, namespace)
 
-        generated_client = namespace["GeneratedClient"]
+        generated_client = namespace["Client"]
         generated_client_cls = generated_client
         data_source_config = namespace["DataSourceConfig"]
         expected_mapping = {
@@ -302,7 +303,7 @@ def test_generated_client_supports_named_datasources() -> None:
 
 def test_generated_client_written_module_allows_direct_import(tmp_path: Path) -> None:
     module = generate_client([User])
-    target = Path(__file__).resolve().parents[1] / "src" / "dclassql" / "generated.py"
+    target = resolve_generated_path()
     backup = target.read_text(encoding="utf-8") if target.exists() else None
     try:
         target.write_text(module.code, encoding="utf-8")
@@ -311,7 +312,7 @@ def test_generated_client_written_module_allows_direct_import(tmp_path: Path) ->
         importlib.reload(dql)
         Client = dql.Client
 
-        assert Client.__name__ == "GeneratedClient"
+        assert Client.__name__ == "Client"
     finally:
         if backup is None:
             target.unlink(missing_ok=True)

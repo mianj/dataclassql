@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from dclassql.db_pool import BaseDBPool, save_local
 from dclassql.runtime.backends import BackendProtocol, RelationSpec, create_backend
-from dclassql.runtime.datasource import resolve_sqlite_path
+from dclassql.runtime.datasource import open_sqlite_connection
 import sqlite3
 from datetime import datetime
 from test_codegen import Address, BirthDay, Book, User, UserBook
@@ -295,7 +295,7 @@ class UserBookTable:
     def find_first(self, *, where: UserBookWhereDict | None = None, include: dict[TUserBookIncludeCol, bool] | None = None, order_by: Sequence[tuple[TUserBookSortableCol, Literal['asc', 'desc']]] | None = None, skip: int | None = None) -> UserBook | None:
         return self._backend.find_first(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, skip=skip)
 
-class GeneratedClient(BaseDBPool):
+class Client(BaseDBPool):
     datasources = {
         'sqlite': DataSourceConfig(provider='sqlite', url='sqlite:///analytics.db', name=None),
     }
@@ -305,8 +305,7 @@ class GeneratedClient(BaseDBPool):
     def _backend_sqlite(cls) -> BackendProtocol[Any, Any, Mapping[str, object]]:
         config = cls.datasources['sqlite']
         if config.provider == 'sqlite':
-            path = resolve_sqlite_path(config.url)
-            conn = sqlite3.connect(path, check_same_thread=False)
+            conn = open_sqlite_connection(config.url)
             cls._setup_sqlite_db(conn)
             return create_backend('sqlite', conn)
         raise ValueError(f"Unsupported provider '{config.provider}' for datasource 'sqlite'")
@@ -327,4 +326,4 @@ class GeneratedClient(BaseDBPool):
                 backend.close()
             delattr(cls._local, '_backend_sqlite')
 
-__all__ = ("DataSourceConfig", "ForeignKeySpec", "GeneratedClient", "TAddressIncludeCol", "TAddressSortableCol", "AddressInsert", "AddressInsertDict", "AddressWhereDict", "AddressTable", "TBirthDayIncludeCol", "TBirthDaySortableCol", "BirthDayInsert", "BirthDayInsertDict", "BirthDayWhereDict", "BirthDayTable", "TBookIncludeCol", "TBookSortableCol", "BookInsert", "BookInsertDict", "BookWhereDict", "BookTable", "TUserIncludeCol", "TUserSortableCol", "UserInsert", "UserInsertDict", "UserWhereDict", "UserTable", "TUserBookIncludeCol", "TUserBookSortableCol", "UserBookInsert", "UserBookInsertDict", "UserBookWhereDict", "UserBookTable",)
+__all__ = ("DataSourceConfig", "ForeignKeySpec", "Client", "TAddressIncludeCol", "TAddressSortableCol", "AddressInsert", "AddressInsertDict", "AddressWhereDict", "AddressTable", "TBirthDayIncludeCol", "TBirthDaySortableCol", "BirthDayInsert", "BirthDayInsertDict", "BirthDayWhereDict", "BirthDayTable", "TBookIncludeCol", "TBookSortableCol", "BookInsert", "BookInsertDict", "BookWhereDict", "BookTable", "TUserIncludeCol", "TUserSortableCol", "UserInsert", "UserInsertDict", "UserWhereDict", "UserTable", "TUserBookIncludeCol", "TUserBookSortableCol", "UserBookInsert", "UserBookInsertDict", "UserBookWhereDict", "UserBookTable",)

@@ -9,7 +9,7 @@ class _MissingClient:
         )
 
 try:  # pragma: no cover - exercised in integration tests
-    from .generated import GeneratedClient as Client  # type: ignore
+    from .client import Client  # type: ignore
 except ModuleNotFoundError:  # pragma: no cover - fallback when未生成
     Client = _MissingClient  # type: ignore[assignment]
 

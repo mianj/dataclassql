@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from dclassql.cli import DEFAULT_MODEL_FILE, main
+from dclassql.cli import DEFAULT_MODEL_FILE, main, resolve_generated_path
 
 
 MODEL_TEMPLATE = """
@@ -48,7 +48,7 @@ def write_model(tmp_path: Path, db_path: Path, name: str | None = None) -> Path:
 def test_generate_command_outputs_code(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_path = tmp_path / "example.db"
     module_path = write_model(tmp_path, db_path)
-    target = Path(__file__).resolve().parents[1] / "src" / "dclassql" / "generated.py"
+    target = resolve_generated_path()
     backup = target.read_text(encoding="utf-8") if target.exists() else None
     exit_code = main(["-m", str(module_path), "generate"])
     assert exit_code == 0
@@ -56,7 +56,7 @@ def test_generate_command_outputs_code(tmp_path: Path, capsys: pytest.CaptureFix
     assert str(target) in captured.out
     assert target.exists()
     code = target.read_text(encoding="utf-8")
-    assert "class GeneratedClient" in code
+    assert "class Client" in code
     assert "class UserTable" in code
 
     if backup is None:
