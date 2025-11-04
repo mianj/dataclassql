@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typed_db.table_spec import TableInfo, Col
-from typed_db.unwarp import unwarp
+from dclassql.table_spec import TableInfo, Col
+from dclassql.unwarp import unwarp
 
 __datasource__ = {
     "provider": "sqlite",

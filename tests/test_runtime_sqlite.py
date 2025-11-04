@@ -11,8 +11,8 @@ from typing import Any, cast
 
 import pytest
 
-from typed_db.codegen import generate_client
-from typed_db.push import db_push
+from dclassql.codegen import generate_client
+from dclassql.push import db_push
 
 
 __datasource__ = {"provider": "sqlite", "url": None}

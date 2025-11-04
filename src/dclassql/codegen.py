@@ -24,9 +24,9 @@ def generate_client(models: Sequence[type[Any]]) -> GeneratedModule:
     base_imports = {
         "from dataclasses import dataclass, field",
         "import sqlite3",
-        "from typed_db.db_pool import BaseDBPool, save_local",
-        "from typed_db.runtime.backends import BackendProtocol, RelationSpec, create_backend",
-        "from typed_db.runtime.datasource import resolve_sqlite_path",
+        "from dclassql.db_pool import BaseDBPool, save_local",
+        "from dclassql.runtime.backends import BackendProtocol, RelationSpec, create_backend",
+        "from dclassql.runtime.datasource import resolve_sqlite_path",
     }
 
     model_imports: dict[str, set[str]] = defaultdict(set)

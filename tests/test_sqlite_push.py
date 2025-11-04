@@ -12,9 +12,9 @@ __datasource__ = {
     "url": "sqlite:///test.db",
 }
 
-from typed_db.model_inspector import inspect_models
-from typed_db.push import db_push
-from typed_db.push.sqlite import _build_sqlite_schema, push_sqlite
+from dclassql.model_inspector import inspect_models
+from dclassql.push import db_push
+from dclassql.push.sqlite import _build_sqlite_schema, push_sqlite
 
 
 @dataclass

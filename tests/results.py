@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typed_db.db_pool import BaseDBPool, save_local
-from typed_db.runtime.backends import BackendProtocol, RelationSpec, create_backend
-from typed_db.runtime.datasource import resolve_sqlite_path
+from dclassql.db_pool import BaseDBPool, save_local
+from dclassql.runtime.backends import BackendProtocol, RelationSpec, create_backend
+from dclassql.runtime.datasource import resolve_sqlite_path
 import sqlite3
 from datetime import datetime
 from test_codegen import Address, BirthDay, Book, User, UserBook

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from typed_db.codegen import generate_client
+from dclassql.codegen import generate_client
 
 __datasource__ = {"provider": "sqlite", "url": None}
 

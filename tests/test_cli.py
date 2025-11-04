@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from typed_db.cli import DEFAULT_MODEL_FILE, main
+from dclassql.cli import DEFAULT_MODEL_FILE, main
 
 
 MODEL_TEMPLATE = """

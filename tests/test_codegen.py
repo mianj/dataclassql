@@ -10,8 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, Mapping, NotRequired, get_args, get_origin, get_type_hints
 
-from typed_db.codegen import generate_client
-from typed_db.runtime.backends import SQLiteBackend
+from dclassql.codegen import generate_client
+from dclassql.runtime.backends import SQLiteBackend
 
 __datasource__ = {
     "provider": "sqlite",
