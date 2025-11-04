@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from .sqlite_adapters import register_sqlite_adapters
 
 def resolve_sqlite_path(url: str | None) -> str:
     if not url:
@@ -36,4 +37,9 @@ def resolve_sqlite_path(url: str | None) -> str:
 
 def open_sqlite_connection(url: str | None) -> sqlite3.Connection:
     path = resolve_sqlite_path(url)
-    return sqlite3.connect(path, check_same_thread=False)
+    register_sqlite_adapters()
+    return sqlite3.connect(
+        path,
+        check_same_thread=False,
+        detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
+    )

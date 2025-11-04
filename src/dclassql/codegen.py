@@ -26,7 +26,7 @@ def generate_client(models: Sequence[type[Any]]) -> GeneratedModule:
         "import sqlite3",
         "from dclassql.db_pool import BaseDBPool, save_local",
         "from dclassql.runtime.backends import BackendProtocol, RelationSpec, create_backend",
-        "from dclassql.runtime.datasource import resolve_sqlite_path",
+        "from dclassql.runtime.datasource import open_sqlite_connection",
     }
 
     model_imports: dict[str, set[str]] = defaultdict(set)
@@ -347,8 +347,7 @@ def _render_client_class(model_infos: Mapping[str, ModelInfo]) -> str:
         )
         lines.append(f"{indent*2}config = cls.datasources[{key!r}]")
         lines.append(f"{indent*2}if config.provider == 'sqlite':")
-        lines.append(f"{indent*3}path = resolve_sqlite_path(config.url)")
-        lines.append(f"{indent*3}conn = sqlite3.connect(path, check_same_thread=False)")
+        lines.append(f"{indent*3}conn = open_sqlite_connection(config.url)")
         lines.append(f"{indent*3}cls._setup_sqlite_db(conn)")
         lines.append(f"{indent*3}return create_backend('sqlite', conn)")
         lines.append(

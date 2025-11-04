@@ -438,8 +438,8 @@ class SQLiteBackend[ModelT, InsertT, WhereT: Mapping[str, object]](BackendProtoc
         data: InsertT | Mapping[str, object],
     ) -> dict[str, object]:
         allowed = set(table.columns)
-        if isinstance(data, dict):
-            return {k: v for k, v in data.items() if k in allowed}
+        if isinstance(data, Mapping):
+            return {key: data[key] for key in allowed if key in data}
         insert_model = getattr(table, "insert_model", None)
         if insert_model and isinstance(data, insert_model):
             return {column: getattr(data, column) for column in table.columns if hasattr(data, column)}

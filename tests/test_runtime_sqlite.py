@@ -13,6 +13,7 @@ import pytest
 
 from dclassql.codegen import generate_client
 from dclassql.push import db_push
+from dclassql.runtime.datasource import open_sqlite_connection
 
 
 __datasource__ = {"provider": "sqlite", "url": None}
@@ -30,7 +31,7 @@ def _prepare_database(db_path: Path) -> None:
     if db_path.exists():
         db_path.unlink()
     __datasource__ = {"provider": "sqlite", "url": f"sqlite:///{db_path.as_posix()}"}
-    conn = sqlite3.connect(db_path)
+    conn = open_sqlite_connection(f"sqlite:///{db_path.as_posix()}")
     try:
         db_push([RuntimeUser], {"sqlite": conn})
         conn.execute("DELETE FROM RuntimeUser")
@@ -225,7 +226,7 @@ def test_lazy_relations(tmp_path: Path):
         sys.modules[generated_module_name] = generated_module
         exec(module_generated.code, namespace)
         GeneratedClient = cast(type[Any], namespace["GeneratedClient"])
-        with sqlite3.connect(db_path) as conn_setup:
+        with open_sqlite_connection(f"sqlite:///{db_path.as_posix()}") as conn_setup:
             db_push([namespace["LazyUser"], namespace["LazyBirthDay"], namespace["LazyAddress"]], {"sqlite": conn_setup})
         client = GeneratedClient()
 
