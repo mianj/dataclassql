@@ -10,7 +10,7 @@ __datasource__ = {
 
 @dataclass
 class User:
-    id: int | None
+    id: int
     name: str
     email: str
     last_login: datetime
@@ -24,7 +24,7 @@ class User:
 
 @dataclass
 class Book:
-    id: int | None
+    id: int
     name: str
 
     def index(self):
@@ -70,7 +70,7 @@ def test_table_info():
 
 @dataclass
 class A:
-    id: int | None
+    id: int
     name: str
     email: str
 

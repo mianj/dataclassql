@@ -22,7 +22,7 @@ __datasource__ = {{
 
 @dataclass
 class User:
-    id: int | None
+    id: int
     name: str
     email: str | None
     created_at: datetime
@@ -48,11 +48,21 @@ def write_model(tmp_path: Path, db_path: Path, name: str | None = None) -> Path:
 def test_generate_command_outputs_code(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_path = tmp_path / "example.db"
     module_path = write_model(tmp_path, db_path)
+    target = Path(__file__).resolve().parents[1] / "src" / "dclassql" / "generated.py"
+    backup = target.read_text(encoding="utf-8") if target.exists() else None
     exit_code = main(["-m", str(module_path), "generate"])
     assert exit_code == 0
     captured = capsys.readouterr()
-    assert "class GeneratedClient" in captured.out
-    assert "UserTable" in captured.out
+    assert str(target) in captured.out
+    assert target.exists()
+    code = target.read_text(encoding="utf-8")
+    assert "class GeneratedClient" in code
+    assert "class UserTable" in code
+
+    if backup is None:
+        target.unlink(missing_ok=True)
+    else:
+        target.write_text(backup, encoding="utf-8")
 
 
 def test_push_db_command_creates_schema(tmp_path: Path) -> None:

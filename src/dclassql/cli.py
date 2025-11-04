@@ -75,7 +75,10 @@ def command_generate(module_path: Path) -> None:
     module = load_module(module_path)
     models = collect_models(module)
     generated = generate_client(models)
-    sys.stdout.write(generated.code)
+    target_dir = Path(__file__).resolve().parent
+    output_path = target_dir / "generated.py"
+    output_path.write_text(generated.code, encoding="utf-8")
+    sys.stdout.write(f"Client written to {output_path}\n")
 
 
 def command_push_db(module_path: Path) -> None:

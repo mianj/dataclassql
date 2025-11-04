@@ -20,7 +20,7 @@ __datasource__ = {"provider": "sqlite", "url": None}
 
 @dataclass
 class RuntimeUser:
-    id: int | None
+    id: int
     name: str
     email: str | None
 

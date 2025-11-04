@@ -1,8 +1,10 @@
 # 项目总体目标
 
-本项目致力于做一个类似 Prisma for Python 那样的 ORM 工具, 工具使用前要根据模型定义生成类型安全的客户端代码, 这样项目里可获得在Python本身无法做到的类型标注. 
+本项目致力于做一个类似 Prisma for Python 那样的 ORM 工具(Prisma 的精神继任者), 工具使用前要根据模型定义生成类型安全的客户端代码, 这样项目里可获得在Python本身无法做到的类型标注. 
 
-例如对于模型:
+另外, 本项目希望模型定义足够干净, 就像写普通的 dataclass 一样, 而不是起手`from xxx import Col, Field, BaseModel, relationship`, 然后给每个字段写一个`xxx: Annotation[int, yyy] = mapped_column(zzz=t)`. 保证生成模型用的代码在 pyright/mypy 看起来是类型安全复合直觉的
+
+例如可以声明以下模型:
 
 ```
 @dataclass
@@ -16,9 +18,9 @@ class User:
     addresses: list[Address]
 
     def index(self):
-        yield self.name
-        yield self.last_login, self.name # 复合索引
-        yield self.last_login
+        yield self.name                  # 第一个索引
+        yield self.last_login, self.name # 第二个索引, 且是复合索引
+        yield self.last_login            # 第三个索引
 
 
 @dataclass
@@ -30,13 +32,10 @@ class Address:
     user: User
 
     def foreign_key(self): 
-        yield self.user.id == self.user_id, User.addresses
+        yield self.user.id == self.user_id, User.addresses # 本表的 user 的 id 就是本表的 user_id, 并与 User 那边叫做 addresses
 
 ```
-
-在插入时理论上只需要一个 name、last_login 就足够插入, 而插入后则 id 一定存在, 如果我们只是把 id 标注为 int | None, 那么插入后或者查询后的 User 就需要额外对 id 判空, 如果标注为 int, 则插入前必须要指定一个 id. 
-
-因此要分成两步, 基于这样的 User 生成:
+来生成如下代码: 
 ```
 TUserIncludeCol = Literal['Address', 'BirthDay', 'UserBook']
 TUserSortableCol = Literal['id', 'name', 'email', 'last_login', 'created_at']
@@ -91,6 +90,8 @@ class UserTable:
     ) -> User | None: ...
 ```
 
+为何要走二部生成路线? 在插入User时理论上只需要 name、last_login 就足够, 而插入后则 id 一定存在, 如果我们只是把 id 标注为 int | None, 那么插入后或者查询后的 User 就需要额外对 id 判空, 如果标注为 int, 则插入前必须要指定一个 id. 如果要在 dataclass 之外解决这个问题, 那就要像其他 orm 一样列一堆堆的导入. 
+
 
 # 路线图
 
@@ -100,10 +101,11 @@ class UserTable:
     - [x] 对应 prisma db push 的功能, 如: 创建表, 创建索引, 变更表结构和变更索引等
     - [x] 运行时查询和插入等功能
 - [x] 命令行接口包括: `typed-db -m {model py file} push-db`、`typed-db -m {model py file} generate`, model py file 默认名为`model.py`
+- [x] 惰性 n+1 查询关联表
 
 # 设计
 
-- 完全在 Python 中定义表, 就像写 dataclass 一样, 没有奇怪的 col 或者 field. 通过`def foreign_key(self): yield xxx`, `def index(self): yield xxx`, `def primary_key(self): yield xxx`来标注, 使用见下. 生成表时, 通过传入一个虚假的 self 获取对应的列, 见 @src/typed_db/table_spec.py 中的 TableInfo/FakeSelf/KeySpec/Col. 
+- 完全在 Python 中定义表, 就像写 dataclass 一样, 没有奇怪的 col 或者 field. 通过`def foreign_key(self): yield xxx`, `def index(self): yield xxx`, `def primary_key(self): yield xxx`来标注, 使用见下. 生成表时, 通过传入一个虚假的 self 获取对应的列, 见 @src/dclassql/table_spec.py 中的 TableInfo/FakeSelf/KeySpec/Col. 
 - 虚拟外键, 外键只是查询意义上的东西, 不在数据库生成
 - 与 Prisma 类似的 n+1 机制, 可以在find系列函数里设置include=, 也可以不include, 但在获取对象时即时查询
 - 使用 fake self 机制获取主键、索引、外键、唯键等信息

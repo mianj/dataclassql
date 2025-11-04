@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import sqlite3
 import sys
 import tempfile
@@ -73,7 +74,7 @@ class UserBook:
 
 @dataclass
 class User:
-    id: int | None
+    id: int
     name: str
     email: str
     last_login: datetime
@@ -297,3 +298,25 @@ def test_generated_client_supports_named_datasources() -> None:
         secondary_db.unlink(missing_ok=True)
         if generated_client_cls is not None:
             generated_client_cls.close_all()
+
+
+def test_generated_client_written_module_allows_direct_import(tmp_path: Path) -> None:
+    module = generate_client([User])
+    target = Path(__file__).resolve().parents[1] / "src" / "dclassql" / "generated.py"
+    backup = target.read_text(encoding="utf-8") if target.exists() else None
+    try:
+        target.write_text(module.code, encoding="utf-8")
+        sys.modules.pop("dclassql.generated", None)
+        import dclassql as dql
+        importlib.reload(dql)
+        Client = dql.Client
+
+        assert Client.__name__ == "GeneratedClient"
+    finally:
+        if backup is None:
+            target.unlink(missing_ok=True)
+        else:
+            target.write_text(backup, encoding="utf-8")
+        sys.modules.pop("dclassql.generated", None)
+        import dclassql as dql  # type: ignore[import]
+        importlib.reload(dql)

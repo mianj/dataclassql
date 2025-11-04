@@ -22,7 +22,7 @@ def test_pyright_reports_missing_required_field(tmp_path: Path) -> None:
 
     @dataclass
     class User:
-        id: int | None
+        id: int
         name: str
         email: str
 
