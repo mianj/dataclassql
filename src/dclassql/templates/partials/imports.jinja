@@ -1,0 +1,12 @@
+{% for line in header_lines %}{{ line }}
+{% endfor %}{% if header_lines %}
+
+{% endif %}{% for line in base_imports %}{{ line }}
+{% endfor %}{% if base_imports %}
+
+{% endif %}{% for block in module_imports %}from {{ block.module }} import {{ block.names | join(', ') }}
+{% endfor %}{% if module_imports %}
+
+{% endif %}{% if typing_names %}from typing import {{ typing_names | join(', ') }}
+
+{% endif %}

@@ -1,0 +1,30 @@
+class Client(BaseDBPool):
+    datasources = {
+{% for item in client.datasource_items %}        {{ item.key_repr }}: DataSourceConfig(provider={{ item.provider_repr }}, url={{ item.url_repr }}, name={{ item.name_repr }}),
+{% endfor %}    }
+
+{% for method in client.backend_methods %}    @classmethod
+    @save_local
+    def {{ method.method_name }}(cls) -> BackendProtocol[Any, Any, Mapping[str, object]]:
+        config = cls.datasources[{{ method.key_repr }}]
+        if config.provider == 'sqlite':
+            conn = open_sqlite_connection(config.url)
+            cls._setup_sqlite_db(conn)
+            return create_backend('sqlite', conn)
+        raise ValueError(f"Unsupported provider '{config.provider}' for datasource {{ method.key_repr }}")
+
+{% endfor %}    def __init__(self) -> None:
+{% for binding in client.model_bindings %}        self.{{ binding.attr_name }} = {{ binding.table_class }}(cast({{ binding.backend_protocol_annotation }}, self.{{ binding.backend_method }}()))
+{% endfor %}
+
+    @classmethod
+    def close_all(cls, verbose: bool = False) -> None:
+        super().close_all(verbose=verbose)
+{% for method in client.backend_methods %}        if hasattr(cls._local, '{{ method.method_name }}'):
+            backend = getattr(cls._local, '{{ method.method_name }}')
+            if hasattr(backend, 'close') and callable(getattr(backend, 'close')):
+                backend.close()
+            delattr(cls._local, '{{ method.method_name }}')
+{% endfor %}
+
+

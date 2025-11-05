@@ -6,7 +6,9 @@ from dataclasses import dataclass, field
 from types import UnionType
 from typing import Annotated, Any, Iterable, Mapping, Sequence, get_args, get_origin, Literal
 
-from .model_inspector import ColumnInfo, ForeignKeyInfo, ModelInfo, inspect_models, DataSourceConfig
+from jinja2 import Environment, PackageLoader
+
+from .model_inspector import ColumnInfo, ModelInfo, inspect_models, DataSourceConfig
 
 
 @dataclass(slots=True)
@@ -15,11 +17,141 @@ class GeneratedModule:
     model_names: tuple[str, ...]
 
 
+@dataclass(slots=True)
+class ImportBlock:
+    module: str
+    names: tuple[str, ...]
+
+
+@dataclass(slots=True)
+class InsertFieldSpec:
+    name: str
+    annotation: str
+    default_expr: str | None
+
+
+@dataclass(slots=True)
+class TypedDictFieldSpec:
+    name: str
+    annotation: str
+
+
+@dataclass(slots=True)
+class WhereFieldSpec:
+    name: str
+    annotation: str
+
+
+@dataclass(slots=True)
+class ColumnSpecRender:
+    name_repr: str
+    optional: bool
+    auto_increment: bool
+    has_default: bool
+    has_default_factory: bool
+
+
+@dataclass(slots=True)
+class ForeignKeyRender:
+    local_columns_literal: str
+    remote_model: str
+    remote_columns_literal: str
+    backref_repr: str
+
+
+@dataclass(slots=True)
+class RelationRender:
+    name_repr: str
+    table_name_repr: str
+    many: bool
+    mapping_literal: str
+    table_module_expr: str
+    table_factory_expr: str
+
+
+@dataclass(slots=True)
+class ModelRenderContext:
+    name: str
+    include_alias: str
+    include_literal_expr: str
+    sortable_alias: str
+    sortable_literal_expr: str
+    insert_class: str
+    insert_dict_class: str
+    where_dict_class: str
+    table_class: str
+    datasource_expr: str
+    include_annotation: str
+    order_by_annotation: str
+    insert_union_annotation: str
+    insert_many_sequence_annotation: str
+    insert_many_return_annotation: str
+    find_first_return_annotation: str
+    backend_protocol_annotation: str
+    insert_fields: tuple[InsertFieldSpec, ...]
+    typed_dict_fields: tuple[TypedDictFieldSpec, ...]
+    where_fields: tuple[WhereFieldSpec, ...]
+    column_specs: tuple[ColumnSpecRender, ...]
+    foreign_keys: tuple[ForeignKeyRender, ...]
+    relation_entries: tuple[RelationRender, ...]
+    primary_key_literal: str
+    indexes_literal: str
+    unique_indexes_literal: str
+
+
+@dataclass(slots=True)
+class ClientDatasourceContext:
+    key: str
+    key_repr: str
+    provider_repr: str
+    url_repr: str
+    name_repr: str
+
+
+@dataclass(slots=True)
+class BackendMethodContext:
+    key: str
+    key_repr: str
+    method_name: str
+
+
+@dataclass(slots=True)
+class ClientModelBindingContext:
+    attr_name: str
+    table_class: str
+    model_name: str
+    insert_class: str
+    where_dict_class: str
+    backend_method: str
+    backend_protocol_annotation: str
+
+
+@dataclass(slots=True)
+class ClientContext:
+    datasource_items: tuple[ClientDatasourceContext, ...]
+    backend_methods: tuple[BackendMethodContext, ...]
+    model_bindings: tuple[ClientModelBindingContext, ...]
+
+
+_TEMPLATE_NAME = "client_module.py.jinja"
+_ENVIRONMENT: Environment | None = None
+
+
+def _get_environment() -> Environment:
+    global _ENVIRONMENT
+    if _ENVIRONMENT is None:
+        _ENVIRONMENT = Environment(
+            loader=PackageLoader("dclassql", "templates"),
+            autoescape=False,
+            trim_blocks=False,
+            lstrip_blocks=True,
+        )
+    return _ENVIRONMENT
+
+
 def generate_client(models: Sequence[type[Any]]) -> GeneratedModule:
     model_infos = inspect_models(models)
     renderer = _TypeRenderer({info.model: name for name, info in model_infos.items()})
-
-    header_lines: list[str] = ["from __future__ import annotations", ""]
 
     base_imports = {
         "from dataclasses import dataclass, field",
@@ -35,15 +167,10 @@ def generate_client(models: Sequence[type[Any]]) -> GeneratedModule:
         module = info.model.__module__
         model_imports.setdefault(module, set()).add(info.model.__name__)
 
-    body_sections: list[str] = [_render_metadata_base()]
-
-    rendered_models: list[str] = []
-    for name in sorted(model_infos.keys()):
-        info = model_infos[name]
-        rendered_models.append(_render_model(info, renderer, model_infos))
-
-    body_sections.extend(rendered_models)
-    body_sections.append(_render_client_class(model_infos))
+    model_contexts = [
+        _build_model_context(model_infos[name], renderer, model_infos)
+        for name in sorted(model_infos.keys())
+    ]
 
     module_imports = renderer.build_imports()
     combined_imports: dict[str, set[str]] = defaultdict(set)
@@ -52,115 +179,224 @@ def generate_client(models: Sequence[type[Any]]) -> GeneratedModule:
     for module, names in module_imports.items():
         combined_imports[module].update(names)
 
-    import_lines = sorted(base_imports)
-    for module, names in sorted(combined_imports.items()):
-        names_list = ", ".join(sorted(names))
-        import_lines.append(f"from {module} import {names_list}")
+    import_blocks = [
+        ImportBlock(module=module, names=tuple(sorted(names)))
+        for module, names in sorted(combined_imports.items())
+    ]
+
     typing_names = {"Any", "Literal", "Mapping", "Sequence", "TypedDict", "cast"}
     typing_names.update(renderer.typing_names)
-    if typing_names:
-        import_lines.append(f"from typing import {', '.join(sorted(typing_names))}")
 
-    lines = header_lines + import_lines + [""]
-    for section in body_sections:
-        lines.append(section)
-        lines.append("")
-    if lines and lines[-1] == "":
-        lines.pop()
-    if lines and lines[-1] != "":
-        lines.append("")
-    lines.append(_render_all(model_infos))
-    code = "\n".join(lines) + "\n"
+    client_context = _build_client_context(model_infos)
+    exports = _collect_exports(model_infos)
+
+    template = _get_environment().get_template(_TEMPLATE_NAME)
+    code = template.render(
+        header_lines=("from __future__ import annotations",),
+        base_imports=tuple(sorted(base_imports)),
+        module_imports=tuple(import_blocks),
+        typing_names=tuple(sorted(typing_names)),
+        models=tuple(model_contexts),
+        client=client_context,
+        exports=tuple(exports),
+    )
+    if not code.endswith("\n"):
+        code += "\n"
     return GeneratedModule(code=code, model_names=tuple(sorted(model_infos.keys())))
 
 
-def _render_metadata_base() -> str:
-    return """@dataclass(slots=True)
-class DataSourceConfig:
-    provider: str
-    url: str | None
-    name: str | None = None
-
-    @property
-    def key(self) -> str:
-        return self.name or self.provider
-
-
-"""
-
-
-def _render_model(info: ModelInfo, renderer: "_TypeRenderer", model_infos: Mapping[str, ModelInfo]) -> str:
-    alias_block, include_alias, sortable_alias = _render_type_aliases(info)
-    sections: list[str] = []
-    if alias_block:
-        sections.append(alias_block)
-    sections.append(_render_insert_structures(info, renderer))
-    sections.append(_render_where_dict(info, renderer))
-    sections.append(_render_table_class(info, renderer, include_alias, sortable_alias, model_infos))
-    return "\n\n".join(sections)
-
-
-def _render_type_aliases(info: ModelInfo) -> tuple[str, str, str]:
+def _build_model_context(
+    info: ModelInfo,
+    renderer: "_TypeRenderer",
+    model_infos: Mapping[str, ModelInfo],
+) -> ModelRenderContext:
     name = info.model.__name__
     include_literals = sorted({relation.target.__name__ for relation in info.relations})
     sortable_literals = [col.name for col in info.columns]
 
-    lines: list[str] = []
     include_alias = f"T{name}IncludeCol"
     include_literal_expr = _literal_expression(include_literals)
-    lines.append(f"{include_alias} = {include_literal_expr}")
-
     sortable_alias = f"T{name}SortableCol"
-    lines.append(f"{sortable_alias} = {_literal_expression(sortable_literals)}")
+    sortable_literal_expr = _literal_expression(sortable_literals)
 
-    return "\n".join(lines), include_alias, sortable_alias
-
-
-def _render_insert_structures(info: ModelInfo, renderer: "_TypeRenderer") -> str:
-    insert_fields = info.columns
-    dataclass_lines: list[str] = []
-    for col in insert_fields:
+    insert_fields: list[InsertFieldSpec] = []
+    typed_dict_fields: list[TypedDictFieldSpec] = []
+    for col in info.columns:
         annotation = _format_insert_annotation(col, renderer)
-        default_fragment = _render_default_fragment(info.model.__name__, col)
+        default_fragment = _render_default_fragment(name, col)
         if default_fragment is not None:
-            dataclass_lines.append(f"    {col.name}: {annotation} = {default_fragment}")
+            default_expr = default_fragment
         elif col.auto_increment:
-            dataclass_lines.append(f"    {col.name}: {annotation} = None")
+            default_expr = "None"
         else:
-            dataclass_lines.append(f"    {col.name}: {annotation}")
-    if not dataclass_lines:
-        dataclass_lines.append("    pass")
-    dataclass_block = f"@dataclass(slots=True, kw_only=True)\nclass {info.model.__name__}Insert:\n" + "\n".join(dataclass_lines)
+            default_expr = None
+        insert_fields.append(InsertFieldSpec(name=col.name, annotation=annotation, default_expr=default_expr))
 
-    dict_lines = []
-    for col in insert_fields:
-        annotation = _format_insert_annotation(col, renderer)
         if col.auto_increment:
             renderer.require_typing("NotRequired")
             base_annotation = _strip_optional_annotation(annotation)
-            dict_lines.append(f"    {col.name}: NotRequired[{base_annotation}]")
+            typed_annotation = f"NotRequired[{base_annotation}]"
         else:
-            dict_lines.append(f"    {col.name}: {annotation}")
-    if not dict_lines:
-        dict_lines.append("    pass")
-    dict_block = f"class {info.model.__name__}InsertDict(TypedDict):\n" + "\n".join(dict_lines)
+            typed_annotation = annotation
+        typed_dict_fields.append(TypedDictFieldSpec(name=col.name, annotation=typed_annotation))
 
-    return "\n\n".join([dataclass_block, dict_block])
-
-
-def _render_where_dict(info: ModelInfo, renderer: "_TypeRenderer") -> str:
-    name = info.model.__name__
-    lines = [f"class {name}WhereDict(TypedDict, total=False):"]
-    field_lines: list[str] = []
+    where_fields: list[WhereFieldSpec] = []
     for col in info.columns:
         annotation = renderer.render(col.python_type)
         if "None" not in annotation:
             annotation = f"{annotation} | None"
-        field_lines.append(f"    {col.name}: {annotation}")
-    if not field_lines:
-        field_lines.append("    pass")
-    lines.extend(field_lines)
-    return "\n".join(lines)
+        where_fields.append(WhereFieldSpec(name=col.name, annotation=annotation))
+
+    column_specs = [
+        ColumnSpecRender(
+            name_repr=repr(column.name),
+            optional=column.optional,
+            auto_increment=column.auto_increment,
+            has_default=column.has_default,
+            has_default_factory=column.has_default_factory,
+        )
+        for column in info.columns
+    ]
+
+    foreign_keys = [
+        ForeignKeyRender(
+            local_columns_literal=_tuple_literal(fk.local_columns),
+            remote_model=fk.remote_model.__name__,
+            remote_columns_literal=_tuple_literal(fk.remote_columns),
+            backref_repr=repr(fk.backref_attribute),
+        )
+        for fk in info.foreign_keys
+    ]
+
+    relation_entries = [
+        RelationRender(
+            name_repr=repr(entry["name"]),
+            table_name_repr=repr(entry["table_name"]),
+            many=entry["many"],
+            mapping_literal=_tuple_literal(entry["mapping"]),
+            table_module_expr=entry["table_module_expr"],
+            table_factory_expr=entry["table_factory_expr"],
+        )
+        for entry in _build_relation_entries(info, model_infos)
+    ]
+
+    datasource_values = info.datasource
+    datasource_expr = (
+        f"DataSourceConfig(provider={datasource_values.provider!r}, url={repr(datasource_values.url)}, name={repr(datasource_values.name)})"
+    )
+
+    insert_class = f"{name}Insert"
+    insert_dict_class = f"{name}InsertDict"
+    where_dict_class = f"{name}WhereDict"
+    table_class = f"{name}Table"
+
+    include_annotation = f"dict[{include_alias}, bool] | None"
+    order_by_annotation = f"Sequence[tuple[{sortable_alias}, Literal['asc', 'desc']]] | None"
+    insert_union_annotation = f"{insert_class} | {insert_dict_class}"
+    insert_many_sequence_annotation = f"Sequence[{insert_union_annotation}]"
+    insert_many_return_annotation = f"list[{name}]"
+    find_first_return_annotation = f"{name} | None"
+    backend_protocol_annotation = f"BackendProtocol[{name}, {insert_class}, {where_dict_class}]"
+
+    indexes_literal = _tuple_literal(tuple(tuple(idx) for idx in info.indexes)) if info.indexes else "()"
+    unique_indexes_literal = (
+        _tuple_literal(tuple(tuple(idx) for idx in info.unique_indexes)) if info.unique_indexes else "()"
+    )
+
+    return ModelRenderContext(
+        name=name,
+        include_alias=include_alias,
+        include_literal_expr=include_literal_expr,
+        sortable_alias=sortable_alias,
+        sortable_literal_expr=sortable_literal_expr,
+        insert_class=insert_class,
+        insert_dict_class=insert_dict_class,
+        where_dict_class=where_dict_class,
+        table_class=table_class,
+        datasource_expr=datasource_expr,
+        include_annotation=include_annotation,
+        order_by_annotation=order_by_annotation,
+        insert_union_annotation=insert_union_annotation,
+        insert_many_sequence_annotation=insert_many_sequence_annotation,
+        insert_many_return_annotation=insert_many_return_annotation,
+        find_first_return_annotation=find_first_return_annotation,
+        backend_protocol_annotation=backend_protocol_annotation,
+        insert_fields=tuple(insert_fields),
+        typed_dict_fields=tuple(typed_dict_fields),
+        where_fields=tuple(where_fields),
+        column_specs=tuple(column_specs),
+        foreign_keys=tuple(foreign_keys),
+        relation_entries=tuple(relation_entries),
+        primary_key_literal=_tuple_literal(info.primary_key),
+        indexes_literal=indexes_literal,
+        unique_indexes_literal=unique_indexes_literal,
+    )
+
+
+def _build_client_context(model_infos: Mapping[str, ModelInfo]) -> ClientContext:
+    datasource_configs: dict[str, DataSourceConfig] = {}
+    for info in model_infos.values():
+        datasource = info.datasource
+        key = datasource.name or datasource.provider
+        existing = datasource_configs.get(key)
+        if existing is None:
+            datasource_configs[key] = datasource
+        elif existing != datasource:
+            raise ValueError(f"Conflicting datasource key '{key}' for providers")
+
+    datasource_items = [
+        ClientDatasourceContext(
+            key=key,
+            key_repr=repr(key),
+            provider_repr=repr(ds.provider),
+            url_repr=repr(ds.url),
+            name_repr=repr(ds.name),
+        )
+        for key, ds in sorted(datasource_configs.items())
+    ]
+
+    backend_methods: list[BackendMethodContext] = []
+    method_map: dict[str, str] = {}
+    for key in sorted(datasource_configs.keys()):
+        method_name = f"_backend_{_sanitize_identifier(key)}"
+        backend_methods.append(BackendMethodContext(key=key, key_repr=repr(key), method_name=method_name))
+        method_map[key] = method_name
+
+    model_bindings = [
+        ClientModelBindingContext(
+            attr_name=_camel_to_snake(name),
+            table_class=f"{name}Table",
+            model_name=name,
+            insert_class=f"{name}Insert",
+            where_dict_class=f"{name}WhereDict",
+            backend_method=method_map[(model_infos[name].datasource.name or model_infos[name].datasource.provider)],
+            backend_protocol_annotation=
+            f"BackendProtocol[{name}, {name}Insert, {name}WhereDict]",
+        )
+        for name in sorted(model_infos.keys())
+    ]
+
+    return ClientContext(
+        datasource_items=tuple(datasource_items),
+        backend_methods=tuple(backend_methods),
+        model_bindings=tuple(model_bindings),
+    )
+
+
+def _collect_exports(model_infos: Mapping[str, ModelInfo]) -> list[str]:
+    exports: list[str] = ["DataSourceConfig", "ForeignKeySpec", "Client"]
+    for name in sorted(model_infos.keys()):
+        exports.extend(
+            [
+                f"T{name}IncludeCol",
+                f"T{name}SortableCol",
+                f"{name}Insert",
+                f"{name}InsertDict",
+                f"{name}WhereDict",
+                f"{name}Table",
+            ]
+        )
+    return exports
 
 
 def _build_relation_entries(info: ModelInfo, model_infos: Mapping[str, ModelInfo]) -> list[dict[str, Any]]:
@@ -212,96 +448,6 @@ def _build_relation_entries(info: ModelInfo, model_infos: Mapping[str, ModelInfo
     return entries
 
 
-def _render_table_class(
-    info: ModelInfo,
-    renderer: "_TypeRenderer",
-    include_alias: str | None,
-    sortable_alias: str,
-    model_infos: Mapping[str, ModelInfo],
-) -> str:
-    name = info.model.__name__
-    indent = "    "
-    where_alias = f"{name}WhereDict"
-    lines = [f"class {name}Table:"]
-    lines.append(f"{indent}model = {name}")
-    lines.append(f"{indent}insert_model = {name}Insert")
-    ds = info.datasource
-    ds_url_repr = repr(ds.url)
-    lines.append(
-        f"{indent}datasource = DataSourceConfig(provider={ds.provider!r}, url={ds_url_repr}, name={repr(ds.name)})"
-    )
-    lines.append(f"{indent}column_specs: tuple[ColumnSpec, ...] = (")
-    for column in info.columns:
-        lines.append(
-            f"{indent*2}ColumnSpec("
-            f"name={column.name!r}, "
-            f"optional={column.optional}, "
-            f"auto_increment={column.auto_increment}, "
-            f"has_default={column.has_default}, "
-            f"has_default_factory={column.has_default_factory}"
-            f"),"
-        )
-    lines.append(f"{indent})")
-    lines.append(
-        f"{indent}column_specs_by_name: Mapping[str, ColumnSpec] = MappingProxyType({{spec.name: spec for spec in column_specs}})"
-    )
-    lines.append(f"{indent}primary_key: tuple[str, ...] = {_tuple_literal(info.primary_key)}")
-    if info.indexes:
-        lines.append(f"{indent}indexes: tuple[tuple[str, ...], ...] = {_tuple_literal(tuple(idx) for idx in info.indexes)}")
-    else:
-        lines.append(f"{indent}indexes: tuple[tuple[str, ...], ...] = ()")
-    if info.unique_indexes:
-        lines.append(f"{indent}unique_indexes: tuple[tuple[str, ...], ...] = {_tuple_literal(tuple(idx) for idx in info.unique_indexes)}")
-    else:
-        lines.append(f"{indent}unique_indexes: tuple[tuple[str, ...], ...] = ()")
-    if info.foreign_keys:
-        lines.append(f"{indent}foreign_keys: tuple[ForeignKeySpec, ...] = (")
-        for fk in info.foreign_keys:
-            lines.append(f"{indent*2}ForeignKeySpec(")
-            lines.append(f"{indent*3}local_columns={_tuple_literal(fk.local_columns)},")
-            lines.append(f"{indent*3}remote_model={fk.remote_model.__name__},")
-            lines.append(f"{indent*3}remote_columns={_tuple_literal(fk.remote_columns)},")
-            lines.append(f"{indent*3}backref={repr(fk.backref_attribute)},")
-            lines.append(f"{indent*2}),")
-        lines.append(f"{indent})")
-    else:
-        lines.append(f"{indent}foreign_keys: tuple[ForeignKeySpec, ...] = ()")
-    relation_entries = _build_relation_entries(info, model_infos)
-    if relation_entries:
-        lines.append(f"{indent}relations: tuple[RelationSpec, ...] = (")
-        for entry in relation_entries:
-            mapping_literal = _tuple_literal(entry["mapping"])
-            module_expr = entry["table_module_expr"]
-            factory_expr = entry["table_factory_expr"]
-            lines.append(
-                f"{indent*2}RelationSpec(name={entry['name']!r}, table_name={entry['table_name']!r}, table_module={module_expr}, many={entry['many']}, mapping={mapping_literal}, table_factory={factory_expr}),"
-            )
-        lines.append(f"{indent})")
-    else:
-        lines.append(f"{indent}relations: tuple[RelationSpec, ...] = ()")
-    lines.append("")
-    lines.append(f"{indent}def __init__(self, backend: BackendProtocol[{name}, {name}Insert, {where_alias}]) -> None:")
-    lines.append(f"{indent*2}self._backend: BackendProtocol[{name}, {name}Insert, {where_alias}] = backend")
-    lines.append("")
-    lines.append(f"{indent}def insert(self, data: {name}Insert | {name}InsertDict) -> {name}:")
-    lines.append(f"{indent*2}return self._backend.insert(self, data)")
-    lines.append("")
-    lines.append(f"{indent}def insert_many(self, data: Sequence[{name}Insert | {name}InsertDict], *, batch_size: int | None = None) -> list[{name}]:")
-    lines.append(f"{indent*2}return self._backend.insert_many(self, data, batch_size=batch_size)")
-    lines.append("")
-    include_annotation = f"dict[{include_alias}, bool] | None"
-    lines.append(f"{indent}def find_many(self, *, where: {where_alias} | None = None, include: {include_annotation} = None, order_by: Sequence[tuple[{sortable_alias}, Literal['asc', 'desc']]] | None = None, take: int | None = None, skip: int | None = None) -> list[{name}]:")
-    lines.append(
-        f"{indent*2}return self._backend.find_many(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, take=take, skip=skip)"
-    )
-    lines.append("")
-    lines.append(f"{indent}def find_first(self, *, where: {where_alias} | None = None, include: {include_annotation} = None, order_by: Sequence[tuple[{sortable_alias}, Literal['asc', 'desc']]] | None = None, skip: int | None = None) -> {name} | None:")
-    lines.append(
-        f"{indent*2}return self._backend.find_first(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, skip=skip)"
-    )
-    return "\n".join(lines)
-
-
 def _format_insert_annotation(col: ColumnInfo, renderer: "_TypeRenderer") -> str:
     annotation = renderer.render(col.python_type)
     needs_optional = col.auto_increment
@@ -317,89 +463,6 @@ def _render_default_fragment(model_name: str, col: ColumnInfo) -> str | None:
     if col.has_default:
         return repr(col.default_value)
     return None
-
-
-def _render_client_class(model_infos: Mapping[str, ModelInfo]) -> str:
-    indent = "    "
-    lines = ["class Client(BaseDBPool):"]
-    datasource_configs: dict[str, DataSourceConfig] = {}
-    for info in model_infos.values():
-        datasource = info.datasource
-        key = datasource.name or datasource.provider
-        existing = datasource_configs.get(key)
-        if existing is None:
-            datasource_configs[key] = datasource
-        elif existing != datasource:
-            raise ValueError(
-                f"Conflicting datasource key '{key}' for providers"
-            )
-    lines.append(f"{indent}datasources = {{")
-    for key in sorted(datasource_configs.keys()):
-        ds = datasource_configs[key]
-        lines.append(
-            f"{indent*2}{key!r}: DataSourceConfig(provider={ds.provider!r}, url={repr(ds.url)}, name={repr(ds.name)}),"
-        )
-    lines.append(f"{indent}}}")
-
-    backend_methods: list[tuple[str, str]] = []
-    for key in sorted(datasource_configs.keys()):
-        method_suffix = _sanitize_identifier(key)
-        method_name = f"_backend_{method_suffix}"
-        backend_methods.append((key, method_name))
-        lines.append("")
-        lines.append(f"{indent}@classmethod")
-        lines.append(f"{indent}@save_local")
-        lines.append(
-            f"{indent}def {method_name}(cls) -> BackendProtocol[Any, Any, Mapping[str, object]]:"
-        )
-        lines.append(f"{indent*2}config = cls.datasources[{key!r}]")
-        lines.append(f"{indent*2}if config.provider == 'sqlite':")
-        lines.append(f"{indent*3}conn = open_sqlite_connection(config.url)")
-        lines.append(f"{indent*3}cls._setup_sqlite_db(conn)")
-        lines.append(f"{indent*3}return create_backend('sqlite', conn)")
-        lines.append(
-            f"{indent*2}raise ValueError(f\"Unsupported provider '{{config.provider}}' for datasource '{key}'\")"
-        )
-
-    lines.append("")
-    lines.append(f"{indent}def __init__(self) -> None:")
-    method_map = {key: method for key, method in backend_methods}
-
-    for name in sorted(model_infos.keys()):
-        attr = _camel_to_snake(name)
-        datasource = model_infos[name].datasource
-        ds_key = datasource.name or datasource.provider
-        where_alias = f"{name}WhereDict"
-        method_name = method_map[ds_key]
-        lines.append(
-            f"{indent*2}self.{attr} = {name}Table(cast(BackendProtocol[{name}, {name}Insert, {where_alias}], self.{method_name}()))"
-        )
-    lines.append("")
-    lines.append(f"{indent}@classmethod")
-    lines.append(f"{indent}def close_all(cls, verbose: bool = False) -> None:")
-    lines.append(f"{indent*2}super().close_all(verbose=verbose)")
-    for _, method_name in backend_methods:
-        lines.append(f"{indent*2}if hasattr(cls._local, '{method_name}'):")
-        lines.append(f"{indent*3}backend = getattr(cls._local, '{method_name}')")
-        lines.append(f"{indent*3}if hasattr(backend, 'close') and callable(getattr(backend, 'close')):")
-        lines.append(f"{indent*4}backend.close()")
-        lines.append(f"{indent*3}delattr(cls._local, '{method_name}')")
-    return "\n".join(lines)
-
-
-def _render_all(model_infos: Mapping[str, ModelInfo]) -> str:
-    exports: list[str] = ["DataSourceConfig", "ForeignKeySpec", "Client"]
-    for name in sorted(model_infos.keys()):
-        exports.extend([
-            f"T{name}IncludeCol",
-            f"T{name}SortableCol",
-            f"{name}Insert",
-            f"{name}InsertDict",
-            f"{name}WhereDict",
-            f"{name}Table",
-        ])
-    exports_literal = ", ".join(f"\"{item}\"" for item in exports)
-    return f"__all__ = ({exports_literal},)"
 
 
 def _literal_expression(values: Sequence[str]) -> str:

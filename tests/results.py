@@ -1,4 +1,6 @@
+
 from __future__ import annotations
+
 
 from dataclasses import dataclass, field
 from dclassql.db_pool import BaseDBPool, save_local
@@ -6,9 +8,15 @@ from dclassql.runtime.backends import BackendProtocol, ColumnSpec, ForeignKeySpe
 from dclassql.runtime.datasource import open_sqlite_connection
 from types import MappingProxyType
 import sqlite3
+
+
 from datetime import datetime
 from test_codegen import Address, BirthDay, Book, User, UserBook
+
+
 from typing import Any, Literal, Mapping, NotRequired, Sequence, TypedDict, cast
+
+
 
 @dataclass(slots=True)
 class DataSourceConfig:
@@ -28,16 +36,19 @@ TAddressSortableCol = Literal['id', 'location', 'user_id']
 
 @dataclass(slots=True, kw_only=True)
 class AddressInsert:
+    
     id: int | None = None
     location: str
     user_id: int
 
 class AddressInsertDict(TypedDict):
+    
     id: NotRequired[int]
     location: str
     user_id: int
 
 class AddressWhereDict(TypedDict, total=False):
+    
     id: int | None
     location: str | None
     user_id: int | None
@@ -82,19 +93,23 @@ class AddressTable:
     def find_first(self, *, where: AddressWhereDict | None = None, include: dict[TAddressIncludeCol, bool] | None = None, order_by: Sequence[tuple[TAddressSortableCol, Literal['asc', 'desc']]] | None = None, skip: int | None = None) -> Address | None:
         return self._backend.find_first(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, skip=skip)
 
+
 TBirthDayIncludeCol = Literal['User']
 TBirthDaySortableCol = Literal['user_id', 'date']
 
 @dataclass(slots=True, kw_only=True)
 class BirthDayInsert:
+    
     user_id: int
     date: datetime
 
 class BirthDayInsertDict(TypedDict):
+    
     user_id: int
     date: datetime
 
 class BirthDayWhereDict(TypedDict, total=False):
+    
     user_id: int | None
     date: datetime | None
 
@@ -137,19 +152,23 @@ class BirthDayTable:
     def find_first(self, *, where: BirthDayWhereDict | None = None, include: dict[TBirthDayIncludeCol, bool] | None = None, order_by: Sequence[tuple[TBirthDaySortableCol, Literal['asc', 'desc']]] | None = None, skip: int | None = None) -> BirthDay | None:
         return self._backend.find_first(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, skip=skip)
 
+
 TBookIncludeCol = Literal['UserBook']
 TBookSortableCol = Literal['id', 'name']
 
 @dataclass(slots=True, kw_only=True)
 class BookInsert:
+    
     id: int | None = None
     name: str
 
 class BookInsertDict(TypedDict):
+    
     id: NotRequired[int]
     name: str
 
 class BookWhereDict(TypedDict, total=False):
+    
     id: int | None
     name: str | None
 
@@ -185,23 +204,27 @@ class BookTable:
     def find_first(self, *, where: BookWhereDict | None = None, include: dict[TBookIncludeCol, bool] | None = None, order_by: Sequence[tuple[TBookSortableCol, Literal['asc', 'desc']]] | None = None, skip: int | None = None) -> Book | None:
         return self._backend.find_first(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, skip=skip)
 
+
 TUserIncludeCol = Literal['Address', 'BirthDay', 'UserBook']
 TUserSortableCol = Literal['id', 'name', 'email', 'last_login']
 
 @dataclass(slots=True, kw_only=True)
 class UserInsert:
+    
     id: int | None = None
     name: str
     email: str
     last_login: datetime
 
 class UserInsertDict(TypedDict):
+    
     id: NotRequired[int]
     name: str
     email: str
     last_login: datetime
 
 class UserWhereDict(TypedDict, total=False):
+    
     id: int | None
     name: str | None
     email: str | None
@@ -243,21 +266,25 @@ class UserTable:
     def find_first(self, *, where: UserWhereDict | None = None, include: dict[TUserIncludeCol, bool] | None = None, order_by: Sequence[tuple[TUserSortableCol, Literal['asc', 'desc']]] | None = None, skip: int | None = None) -> User | None:
         return self._backend.find_first(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, skip=skip)
 
+
 TUserBookIncludeCol = Literal['Book', 'User']
 TUserBookSortableCol = Literal['user_id', 'book_id', 'created_at']
 
 @dataclass(slots=True, kw_only=True)
 class UserBookInsert:
+    
     user_id: int
     book_id: int
     created_at: datetime
 
 class UserBookInsertDict(TypedDict):
+    
     user_id: int
     book_id: int
     created_at: datetime
 
 class UserBookWhereDict(TypedDict, total=False):
+    
     user_id: int | None
     book_id: int | None
     created_at: datetime | None
@@ -309,6 +336,8 @@ class UserBookTable:
     def find_first(self, *, where: UserBookWhereDict | None = None, include: dict[TUserBookIncludeCol, bool] | None = None, order_by: Sequence[tuple[TUserBookSortableCol, Literal['asc', 'desc']]] | None = None, skip: int | None = None) -> UserBook | None:
         return self._backend.find_first(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, skip=skip)
 
+
+
 class Client(BaseDBPool):
     datasources = {
         'sqlite': DataSourceConfig(provider='sqlite', url='sqlite:///analytics.db', name=None),
@@ -331,6 +360,7 @@ class Client(BaseDBPool):
         self.user = UserTable(cast(BackendProtocol[User, UserInsert, UserWhereDict], self._backend_sqlite()))
         self.user_book = UserBookTable(cast(BackendProtocol[UserBook, UserBookInsert, UserBookWhereDict], self._backend_sqlite()))
 
+
     @classmethod
     def close_all(cls, verbose: bool = False) -> None:
         super().close_all(verbose=verbose)
@@ -340,4 +370,41 @@ class Client(BaseDBPool):
                 backend.close()
             delattr(cls._local, '_backend_sqlite')
 
-__all__ = ("DataSourceConfig", "ForeignKeySpec", "Client", "TAddressIncludeCol", "TAddressSortableCol", "AddressInsert", "AddressInsertDict", "AddressWhereDict", "AddressTable", "TBirthDayIncludeCol", "TBirthDaySortableCol", "BirthDayInsert", "BirthDayInsertDict", "BirthDayWhereDict", "BirthDayTable", "TBookIncludeCol", "TBookSortableCol", "BookInsert", "BookInsertDict", "BookWhereDict", "BookTable", "TUserIncludeCol", "TUserSortableCol", "UserInsert", "UserInsertDict", "UserWhereDict", "UserTable", "TUserBookIncludeCol", "TUserBookSortableCol", "UserBookInsert", "UserBookInsertDict", "UserBookWhereDict", "UserBookTable",)
+
+
+
+__all__ = (
+    "DataSourceConfig",
+    "ForeignKeySpec",
+    "Client",
+    "TAddressIncludeCol",
+    "TAddressSortableCol",
+    "AddressInsert",
+    "AddressInsertDict",
+    "AddressWhereDict",
+    "AddressTable",
+    "TBirthDayIncludeCol",
+    "TBirthDaySortableCol",
+    "BirthDayInsert",
+    "BirthDayInsertDict",
+    "BirthDayWhereDict",
+    "BirthDayTable",
+    "TBookIncludeCol",
+    "TBookSortableCol",
+    "BookInsert",
+    "BookInsertDict",
+    "BookWhereDict",
+    "BookTable",
+    "TUserIncludeCol",
+    "TUserSortableCol",
+    "UserInsert",
+    "UserInsertDict",
+    "UserWhereDict",
+    "UserTable",
+    "TUserBookIncludeCol",
+    "TUserBookSortableCol",
+    "UserBookInsert",
+    "UserBookInsertDict",
+    "UserBookWhereDict",
+    "UserBookTable",
+)
