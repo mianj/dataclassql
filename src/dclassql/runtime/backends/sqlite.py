@@ -2,20 +2,17 @@ from __future__ import annotations
 
 import sqlite3
 import threading
-from typing import Any, Literal, Mapping, Sequence, cast
+from typing import Any, Literal, Mapping, Sequence, cast, overload
 
 from pypika.dialects import SQLLiteQuery
+
+from dclassql.typing import IncludeT, InsertT, ModelT, OrderByT, WhereT
+
 from .base import BackendBase
 from .protocols import BackendProtocol, ConnectionFactory, TableProtocol
 
 
-class SQLiteBackend[
-    ModelT,
-    InsertT,
-    WhereT: Mapping[str, object],
-    IncludeT: Mapping[str, bool],
-    OrderByT: Mapping[str, Literal['asc', 'desc']],
-](BackendBase[ModelT, InsertT, WhereT, IncludeT, OrderByT]):
+class SQLiteBackend(BackendBase):
     query_cls = SQLLiteQuery
 
     def __init__(self, source: sqlite3.Connection | ConnectionFactory | "SQLiteBackend") -> None:
@@ -39,7 +36,7 @@ class SQLiteBackend[
 
     def insert_many(
         self,
-        table,
+        table: TableProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT],
         data: Sequence[InsertT | Mapping[str, object]],
         *,
         batch_size: int | None = None,
@@ -107,7 +104,7 @@ class SQLiteBackend[
 
     def _resolve_primary_key(
         self,
-        table,
+        table: TableProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT],
         payload: Mapping[str, object],
         cursor: Any,
     ) -> dict[str, object]:
@@ -115,7 +112,7 @@ class SQLiteBackend[
         if not primary_key:
             raise ValueError(f"Table {table.model.__name__} does not define primary key")
         auto_increment = {spec.name for spec in table.column_specs if spec.auto_increment}
-        mutable_payload = cast(dict[str, object], payload)
+        mutable_payload = dict(payload)
         pk_filter: dict[str, object] = {}
         for pk in primary_key:
             value = mutable_payload.get(pk)
@@ -171,10 +168,3 @@ class SQLiteBackend[
             delattr(self._local, "connection")
         self._clear_identity_map()
 
-
-def create_backend(provider: str, connection: Any) -> BackendProtocol[Any, Any, Mapping[str, object]]:
-    if isinstance(connection, SQLiteBackend):
-        return connection
-    if provider == "sqlite":
-        return SQLiteBackend(connection)
-    raise ValueError(f"Unsupported provider '{provider}'")

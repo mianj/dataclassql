@@ -2,15 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any, Literal, Mapping, Sequence, TypedDict, cast, NotRequired
-
-import sqlite3
+from typing import Any, Literal, Mapping, Sequence, NotRequired
+from typing_extensions import TypedDict
 
 from dclassql.db_pool import BaseDBPool, save_local
-from dclassql.runtime.backends import BackendProtocol, ColumnSpec, ForeignKeySpec, RelationSpec, create_backend
+from dclassql.runtime.backends import BackendProtocol, ColumnSpec, ForeignKeySpec, RelationSpec
 from dclassql.runtime.datasource import open_sqlite_connection
 
-{%- if module_imports %}
+{% if module_imports %}
 {% for block in module_imports -%}
 from {{ block.module }} import {{ block.names | join(', ') }}
 {% endfor %}

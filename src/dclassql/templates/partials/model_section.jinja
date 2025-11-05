@@ -1,17 +1,17 @@
-{% set name = model.name %}
-{% set info = model.model_info %}
-{% set insert_class = name ~ 'Insert' %}
-{% set insert_dict_class = name ~ 'InsertDict' %}
-{% set where_dict_class = name ~ 'WhereDict' %}
-{% set include_dict_class = name ~ 'IncludeDict' %}
-{% set order_by_dict_class = name ~ 'OrderByDict' %}
-{% set table_class = name ~ 'Table' %}
-{% set include_alias = 'T' ~ name ~ 'IncludeCol' %}
-{% set sortable_alias = 'T' ~ name ~ 'SortableCol' %}
-{% set include_relations = info.relations | sort(attribute='name', case_sensitive=True) %}
-{% set sortable_columns = info.columns %}
+{%- set name = model.name -%}
+{%- set info = model.model_info -%}
+{%- set insert_class = name ~ 'Insert' -%}
+{%- set insert_dict_class = name ~ 'InsertDict' -%}
+{%- set where_dict_class = name ~ 'WhereDict' -%}
+{%- set include_dict_class = name ~ 'IncludeDict' -%}
+{%- set order_by_dict_class = name ~ 'OrderByDict' -%}
+{%- set table_class = name ~ 'Table' -%}
+{%- set include_alias = 'T' ~ name ~ 'IncludeCol' -%}
+{%- set sortable_alias = 'T' ~ name ~ 'SortableCol' -%}
+{%- set include_relations = info.relations | sort(attribute='name', case_sensitive=True) -%}
+{%- set sortable_columns = info.columns -%}
 
-{% set backend_signature = 'BackendProtocol[{}, {}, {}, {}, {}]'.format(name, insert_class, where_dict_class, include_dict_class, order_by_dict_class) %}
+{% set backend_signature = 'BackendProtocol' %}
 
 {% if include_relations %}
 {{ include_alias }} = Literal[{% for relation in include_relations %}'{{ relation.name }}'{% if not loop.last %}, {% endif %}{% endfor %}]
@@ -28,20 +28,20 @@
 class {{ insert_class }}:
 {{ macros.dataclass_fields(model.insert_fields)|indent(4, True) }}
 
-class {{ insert_dict_class }}(TypedDict):
+class {{ insert_dict_class }}(TypedDict, closed=True):
 {{ macros.typed_dict_fields(model.typed_dict_fields)|indent(4, True) }}
 
-class {{ where_dict_class }}(TypedDict, total=False):
+class {{ where_dict_class }}(TypedDict, total=False, closed=True):
 {{ macros.where_fields(model.where_fields)|indent(4, True) }}
 
-class {{ include_dict_class }}(TypedDict, total=False):
+class {{ include_dict_class }}(TypedDict, total=False, closed=True):
 {% if include_relations %}
 {% for relation in include_relations %}    {{ relation.name }}: bool
 {% endfor %}{% else %}
     pass
 {% endif %}
 
-class {{ order_by_dict_class }}(TypedDict, total=False):
+class {{ order_by_dict_class }}(TypedDict, total=False, closed=True):
 {% if sortable_columns %}
 {% for column in sortable_columns %}    {{ column.name }}: Literal['asc', 'desc']
 {% endfor %}{% else %}
@@ -72,13 +72,14 @@ class {{ table_class }}:
     def find_many(self, *, where: {{ where_dict_class }} | None = None, include: {{ include_dict_class }} | None = None, order_by: {{ order_by_dict_class }} | None = None, take: int | None = None, skip: int | None = None) -> list[{{ name }}]:
         return self._backend.find_many(
             self, 
-            where=cast(dict, where), include=cast(dict, include), order_by=cast(dict, order_by), 
+            where=where, include=include, order_by=order_by, 
             take=take, skip=skip
         )
 
     def find_first(self, *, where: {{ where_dict_class }} | None = None, include: {{ include_dict_class }} | None = None, order_by: {{ order_by_dict_class }} | None = None, skip: int | None = None) -> {{ name }} | None:
         return self._backend.find_first(
             self, 
-            where=cast(dict, where), include=cast(dict, include), order_by=cast(dict, order_by), 
+            where=where, include=include, order_by=order_by, 
             skip=skip
         )
+

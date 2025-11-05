@@ -3,23 +3,20 @@ from __future__ import annotations
 import sys
 from abc import ABC, abstractmethod
 from dataclasses import MISSING, fields, is_dataclass
-from typing import Any, Literal, Mapping, Sequence, cast, get_origin
+from typing import Any, Literal, Mapping, Sequence, Type, cast, get_origin
 
 from pypika import Query, Table
 from pypika.enums import Order
 from pypika.terms import Parameter
+from pypika.queries import QueryBuilder
+
+from dclassql.typing import IncludeT, InsertT, ModelT, OrderByT, WhereT
 
 from .lazy import ensure_lazy_state, finalize_lazy_state, reset_lazy_backref
 from .protocols import BackendProtocol, RelationSpec, TableProtocol
 
 
-class BackendBase[
-    ModelT,
-    InsertT,
-    WhereT: Mapping[str, object],
-    IncludeT: Mapping[str, bool],
-    OrderByT: Mapping[str, Literal['asc', 'desc']],
-](BackendProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT], ABC):
+class BackendBase(BackendProtocol, ABC):
     quote_char: str = '"'
     parameter_token: str = '?'
     query_cls: type[Query] = Query
@@ -27,7 +24,7 @@ class BackendBase[
     parameter_cls: type[Parameter] = Parameter
 
     def __init__(self) -> None:
-        self._identity_map: dict[tuple[type[Any], tuple[Any, ...]], Any] = {}
+        self._identity_map: dict[tuple[type[Any], tuple[Any, ...]], object] = {}
 
     def insert(
         self,
@@ -42,7 +39,7 @@ class BackendBase[
         column_names = [spec.name for spec in table.column_specs if spec.name in payload]
         params = [payload[name] for name in column_names]
 
-        insert_query = (
+        insert_query: QueryBuilder = (
             self.query_cls.into(sql_table)
             .columns(*column_names)
             .insert(*(self._new_parameter() for _ in column_names))
@@ -162,23 +159,24 @@ class BackendBase[
                         value = values[field.name]
                     elif field.default is not MISSING:
                         value = field.default
-                    elif field.default_factory is not MISSING:  # type: ignore[attr-defined]
-                        value = field.default_factory()  # type: ignore[misc]
+                    elif field.default_factory is not MISSING:
+                        value = field.default_factory()
                     else:
                         origin = get_origin(field.type)
                         if origin in (list, set, frozenset):
-                            value = origin()  # type: ignore[call-arg]
+                            value = origin()
                         else:
                             value = None
                     object.__setattr__(instance, field.name, value)
             else:
-                instance = cast(ModelT, model(**{spec.name: row[spec.name] for spec in table.column_specs}))
+                instance = model(**{spec.name: row[spec.name] for spec in table.column_specs})
             if key is not None:
                 self._identity_map[key] = instance
         else:
-            instance = cast(ModelT, cached)
+            instance = cached
             for spec in table.column_specs:
                 object.__setattr__(instance, spec.name, row[spec.name])
+        instance = cast(ModelT, instance)
         self._attach_relations(table, instance, include_map)
         return instance
 
@@ -227,7 +225,7 @@ class BackendBase[
         self,
         table: TableProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT],
         row: Any,
-    ) -> tuple[type[Any], tuple[Any, ...]] | None:
+    ) -> tuple[type[ModelT], tuple[Any, ...]] | None:
         pk_columns = getattr(table, "primary_key", ())
         if not pk_columns:
             return None
@@ -260,11 +258,12 @@ class BackendBase[
                 if module is None:
                     raise RuntimeError(f"Module '{table_module_name}' not loaded for relation '{name}'")
                 table_cls = getattr(module, spec.table_name)
+                table_cls = cast(type[BackendProtocol], table_cls)
             state = ensure_lazy_state(
                 instance=instance,
                 attribute=name,
-                backend=cast(BackendProtocol[Any, Any, Mapping[str, object]], self),
-                table_cls=cast(type[Any], table_cls),
+                backend=self,
+                table_cls=table_cls,
                 mapping=spec.mapping,
                 many=spec.many,
             )
@@ -273,8 +272,8 @@ class BackendBase[
     def _clear_identity_map(self) -> None:
         self._identity_map.clear()
 
-    def _render_query(self, query: Query) -> str:
-        return cast(Any, query).get_sql(quote_char=self.quote_char) + ';'
+    def _render_query(self, query: QueryBuilder) -> str:
+        return query.get_sql(quote_char=self.quote_char) + ';'
 
     def _new_parameter(self) -> Parameter:
         return self.parameter_cls(self.parameter_token)

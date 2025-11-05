@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Any, Callable, Literal, Mapping, Protocol, Sequence, runtime_checkable
+from typing import Callable, Literal, Mapping, Protocol, Sequence, runtime_checkable
+
+from dclassql.typing import IncludeT, InsertT, ModelT, OrderByT, WhereT
 
 from .metadata import ColumnSpec, ForeignKeySpec, RelationSpec
 
@@ -15,7 +17,7 @@ class TableProtocol[
     IncludeT: Mapping[str, bool],
     OrderByT: Mapping[str, Literal['asc', 'desc']],
 ](Protocol):
-    def __init__(self, backend: "BackendProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT]") -> None: ...
+    def __init__(self, backend: BackendProtocol) -> None: ...
 
     model: type[ModelT]
     insert_model: type[InsertT]
@@ -23,17 +25,11 @@ class TableProtocol[
     column_specs_by_name: Mapping[str, ColumnSpec]
     primary_key: tuple[str, ...]
     foreign_keys: tuple[ForeignKeySpec, ...]
-    relations: tuple[RelationSpec, ...]
+    relations: tuple[RelationSpec[BackendProtocol], ...]
 
 
 @runtime_checkable
-class BackendProtocol[
-    ModelT,
-    InsertT,
-    WhereT: Mapping[str, object],
-    IncludeT: Mapping[str, bool],
-    OrderByT: Mapping[str, Literal['asc', 'desc']],
-](Protocol):
+class BackendProtocol(Protocol):
     def insert(
         self,
         table: TableProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT],

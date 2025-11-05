@@ -14,13 +14,13 @@ class ColumnSpec:
 
 
 @dataclass(slots=True)
-class RelationSpec:
+class RelationSpec[TTable]:
     name: str
     table_name: str
     table_module: str
     many: bool
     mapping: tuple[tuple[str, str], ...]
-    table_factory: Callable[[], type[Any]] | None = None
+    table_factory: Callable[[], type[TTable]] | None = None
 
 
 @dataclass(slots=True)

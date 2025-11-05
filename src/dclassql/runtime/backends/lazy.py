@@ -2,16 +2,22 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
-from typing import Any, SupportsIndex, cast
+from typing import Any, Literal, SupportsIndex, cast
 from weakref import WeakKeyDictionary
 
 from .protocols import BackendProtocol
 
 
 @dataclass(slots=True)
-class LazyRelationState:
+class LazyRelationState[
+    ModelT,
+    InsertT,
+    WhereT: Mapping[str, object],
+    IncludeT: Mapping[str, bool],
+    OrderByT: Mapping[str, Literal['asc', 'desc']],
+]:
     attribute: str
-    backend: BackendProtocol[Any, Any, Mapping[str, object]]
+    backend: BackendProtocol
     table_cls: type[Any]
     mapping: tuple[tuple[str, str], ...]
     many: bool
@@ -285,10 +291,16 @@ def ensure_lazy_placeholder(instance: Any, state: LazyRelationState) -> Any:
     return proxy
 
 
-def ensure_lazy_state(
+def ensure_lazy_state[
+    ModelT,
+    InsertT,
+    WhereT: Mapping[str, object],
+    IncludeT: Mapping[str, bool],
+    OrderByT: Mapping[str, Literal['asc', 'desc']],
+](
     instance: Any,
     attribute: str,
-    backend: BackendProtocol[Any, Any, Mapping[str, object]],
+    backend: BackendProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT],
     table_cls: type[Any],
     mapping: tuple[tuple[str, str], ...],
     many: bool,

@@ -185,11 +185,7 @@ def test_generate_client_matches_expected_shape() -> None:
     assert insert_many_hints['batch_size'] == int | None
 
     table_init_hints = get_type_hints(user_table_cls.__init__, globalns=namespace, localns=namespace)
-    assert table_init_hints['backend'] == backend_protocol[
-        namespace['User'],
-        namespace['UserInsert'],
-        namespace['UserWhereDict'],
-    ]
+    assert table_init_hints['backend'] == backend_protocol
 
     find_many_hints = get_type_hints(user_table_cls.find_many, globalns=namespace, localns=namespace)
     assert find_many_hints['return'] == list[namespace['User']]
