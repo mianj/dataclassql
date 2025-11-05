@@ -1,12 +1,18 @@
-{% for line in header_lines %}{{ line }}
-{% endfor %}{% if header_lines %}
+from __future__ import annotations
 
-{% endif %}{% for line in base_imports %}{{ line }}
-{% endfor %}{% if base_imports %}
+from dataclasses import dataclass, field
+from types import MappingProxyType
+from typing import Any, Literal, Mapping, Sequence, TypedDict, cast, NotRequired
 
-{% endif %}{% for block in module_imports %}from {{ block.module }} import {{ block.names | join(', ') }}
-{% endfor %}{% if module_imports %}
+import sqlite3
 
-{% endif %}{% if typing_names %}from typing import {{ typing_names | join(', ') }}
+from dclassql.db_pool import BaseDBPool, save_local
+from dclassql.runtime.backends import BackendProtocol, ColumnSpec, ForeignKeySpec, RelationSpec, create_backend
+from dclassql.runtime.datasource import open_sqlite_connection
 
-{% endif %}
+{%- if module_imports %}
+{% for block in module_imports -%}
+from {{ block.module }} import {{ block.names | join(', ') }}
+{% endfor %}
+
+{%- endif %}

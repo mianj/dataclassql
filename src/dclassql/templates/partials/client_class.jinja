@@ -14,7 +14,7 @@ class Client(BaseDBPool):
         raise ValueError(f"Unsupported provider '{config.provider}' for datasource {{ method.key_repr }}")
 
 {% endfor %}    def __init__(self) -> None:
-{% for binding in client.model_bindings %}        self.{{ binding.attr_name }} = {{ binding.table_class }}(cast({{ binding.backend_protocol_annotation }}, self.{{ binding.backend_method }}()))
+{% for binding in client.model_bindings %}        self.{{ binding.attr_name }} = {{ binding.model_name }}Table(cast(BackendProtocol[{{ binding.model_name }}, {{ binding.model_name }}Insert, {{ binding.model_name }}WhereDict], self.{{ binding.backend_method }}()))
 {% endfor %}
 
     @classmethod
@@ -26,5 +26,4 @@ class Client(BaseDBPool):
                 backend.close()
             delattr(cls._local, '{{ method.method_name }}')
 {% endfor %}
-
 

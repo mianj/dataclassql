@@ -76,18 +76,7 @@ class ModelRenderContext:
     include_literal_expr: str
     sortable_alias: str
     sortable_literal_expr: str
-    insert_class: str
-    insert_dict_class: str
-    where_dict_class: str
-    table_class: str
     datasource_expr: str
-    include_annotation: str
-    order_by_annotation: str
-    insert_union_annotation: str
-    insert_many_sequence_annotation: str
-    insert_many_return_annotation: str
-    find_first_return_annotation: str
-    backend_protocol_annotation: str
     insert_fields: tuple[InsertFieldSpec, ...]
     typed_dict_fields: tuple[TypedDictFieldSpec, ...]
     where_fields: tuple[WhereFieldSpec, ...]
@@ -118,12 +107,8 @@ class BackendMethodContext:
 @dataclass(slots=True)
 class ClientModelBindingContext:
     attr_name: str
-    table_class: str
     model_name: str
-    insert_class: str
-    where_dict_class: str
     backend_method: str
-    backend_protocol_annotation: str
 
 
 @dataclass(slots=True)
@@ -153,15 +138,6 @@ def generate_client(models: Sequence[type[Any]]) -> GeneratedModule:
     model_infos = inspect_models(models)
     renderer = _TypeRenderer({info.model: name for name, info in model_infos.items()})
 
-    base_imports = {
-        "from dataclasses import dataclass, field",
-        "from types import MappingProxyType",
-        "import sqlite3",
-        "from dclassql.db_pool import BaseDBPool, save_local",
-        "from dclassql.runtime.backends import BackendProtocol, ColumnSpec, ForeignKeySpec, RelationSpec, create_backend",
-        "from dclassql.runtime.datasource import open_sqlite_connection",
-    }
-
     model_imports: dict[str, set[str]] = defaultdict(set)
     for info in model_infos.values():
         module = info.model.__module__
@@ -184,18 +160,12 @@ def generate_client(models: Sequence[type[Any]]) -> GeneratedModule:
         for module, names in sorted(combined_imports.items())
     ]
 
-    typing_names = {"Any", "Literal", "Mapping", "Sequence", "TypedDict", "cast"}
-    typing_names.update(renderer.typing_names)
-
     client_context = _build_client_context(model_infos)
     exports = _collect_exports(model_infos)
 
     template = _get_environment().get_template(_TEMPLATE_NAME)
     code = template.render(
-        header_lines=("from __future__ import annotations",),
-        base_imports=tuple(sorted(base_imports)),
         module_imports=tuple(import_blocks),
-        typing_names=tuple(sorted(typing_names)),
         models=tuple(model_contexts),
         client=client_context,
         exports=tuple(exports),
@@ -285,19 +255,6 @@ def _build_model_context(
         f"DataSourceConfig(provider={datasource_values.provider!r}, url={repr(datasource_values.url)}, name={repr(datasource_values.name)})"
     )
 
-    insert_class = f"{name}Insert"
-    insert_dict_class = f"{name}InsertDict"
-    where_dict_class = f"{name}WhereDict"
-    table_class = f"{name}Table"
-
-    include_annotation = f"dict[{include_alias}, bool] | None"
-    order_by_annotation = f"Sequence[tuple[{sortable_alias}, Literal['asc', 'desc']]] | None"
-    insert_union_annotation = f"{insert_class} | {insert_dict_class}"
-    insert_many_sequence_annotation = f"Sequence[{insert_union_annotation}]"
-    insert_many_return_annotation = f"list[{name}]"
-    find_first_return_annotation = f"{name} | None"
-    backend_protocol_annotation = f"BackendProtocol[{name}, {insert_class}, {where_dict_class}]"
-
     indexes_literal = _tuple_literal(tuple(tuple(idx) for idx in info.indexes)) if info.indexes else "()"
     unique_indexes_literal = (
         _tuple_literal(tuple(tuple(idx) for idx in info.unique_indexes)) if info.unique_indexes else "()"
@@ -309,18 +266,7 @@ def _build_model_context(
         include_literal_expr=include_literal_expr,
         sortable_alias=sortable_alias,
         sortable_literal_expr=sortable_literal_expr,
-        insert_class=insert_class,
-        insert_dict_class=insert_dict_class,
-        where_dict_class=where_dict_class,
-        table_class=table_class,
         datasource_expr=datasource_expr,
-        include_annotation=include_annotation,
-        order_by_annotation=order_by_annotation,
-        insert_union_annotation=insert_union_annotation,
-        insert_many_sequence_annotation=insert_many_sequence_annotation,
-        insert_many_return_annotation=insert_many_return_annotation,
-        find_first_return_annotation=find_first_return_annotation,
-        backend_protocol_annotation=backend_protocol_annotation,
         insert_fields=tuple(insert_fields),
         typed_dict_fields=tuple(typed_dict_fields),
         where_fields=tuple(where_fields),
@@ -365,13 +311,8 @@ def _build_client_context(model_infos: Mapping[str, ModelInfo]) -> ClientContext
     model_bindings = [
         ClientModelBindingContext(
             attr_name=_camel_to_snake(name),
-            table_class=f"{name}Table",
             model_name=name,
-            insert_class=f"{name}Insert",
-            where_dict_class=f"{name}WhereDict",
             backend_method=method_map[(model_infos[name].datasource.name or model_infos[name].datasource.provider)],
-            backend_protocol_annotation=
-            f"BackendProtocol[{name}, {name}Insert, {name}WhereDict]",
         )
         for name in sorted(model_infos.keys())
     ]
