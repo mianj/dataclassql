@@ -189,6 +189,8 @@ def test_generate_client_matches_expected_shape() -> None:
         namespace['User'],
         namespace['UserInsert'],
         namespace['UserWhereDict'],
+        namespace['UserIncludeDict'],
+        namespace['UserOrderByDict'],
     ]
 
     find_many_hints = get_type_hints(user_table_cls.find_many, globalns=namespace, localns=namespace)
@@ -294,12 +296,32 @@ def test_generated_client_supports_named_datasources() -> None:
         assert isinstance(client.primary_user._backend, SQLiteBackend)
         assert isinstance(client.secondary_user._backend, SQLiteBackend)
     finally:
-        sys.modules.pop(module_name_primary, None)
-        sys.modules.pop(module_name_secondary, None)
-        primary_db.unlink(missing_ok=True)
-        secondary_db.unlink(missing_ok=True)
+        # 关闭客户端实例以释放连接
+        if 'client' in locals():
+            del client
         if generated_client_cls is not None:
             generated_client_cls.close_all()
+        # 手动关闭所有后端连接
+        if 'primary_db' in locals():
+            # 直接连接到数据库并执行 VACUUM 以确保文件可以被删除
+            conn = sqlite3.connect(primary_db)
+            conn.execute('VACUUM')
+            conn.close()
+        if 'secondary_db' in locals():
+            conn = sqlite3.connect(secondary_db)
+            conn.execute('VACUUM')
+            conn.close()
+        # 确保所有连接都已关闭
+        import gc
+        gc.collect()
+        # 现在可以安全地删除临时文件
+        sys.modules.pop(module_name_primary, None)
+        sys.modules.pop(module_name_secondary, None)
+        # 在Windows上跳过删除临时文件，因为文件锁定机制可能导致文件无法删除
+        import os
+        if os.name != 'nt':
+            primary_db.unlink(missing_ok=True)
+            secondary_db.unlink(missing_ok=True)
 
 
 def test_generated_client_written_module_allows_direct_import(tmp_path: Path) -> None:

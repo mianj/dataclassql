@@ -11,7 +11,7 @@ from .protocols import BackendProtocol
 @dataclass(slots=True)
 class LazyRelationState:
     attribute: str
-    backend: BackendProtocol[Any, Any, Mapping[str, object]]
+    backend: BackendProtocol[Any, Any, Mapping[str, object], Mapping[str, bool], Mapping[str, Literal['asc', 'desc']]]
     table_cls: type[Any]
     mapping: tuple[tuple[str, str], ...]
     many: bool
@@ -288,7 +288,7 @@ def ensure_lazy_placeholder(instance: Any, state: LazyRelationState) -> Any:
 def ensure_lazy_state(
     instance: Any,
     attribute: str,
-    backend: BackendProtocol[Any, Any, Mapping[str, object]],
+    backend: BackendProtocol[Any, Any, Mapping[str, object], Mapping[str, bool], Mapping[str, Literal['asc', 'desc']]],
     table_cls: type[Any],
     mapping: tuple[tuple[str, str], ...],
     many: bool,

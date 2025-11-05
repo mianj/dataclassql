@@ -533,7 +533,7 @@ class Client(BaseDBPool):
 
     @classmethod
     @save_local
-    def _backend_sqlite(cls) -> BackendProtocol[Any, Any, Mapping[str, object]]:
+    def _backend_sqlite(cls) -> BackendProtocol[Any, Any, Mapping[str, object], Mapping[str, bool], Mapping[str, Literal['asc', 'desc']]]:
         config = cls.datasources['sqlite']
         if config.provider == 'sqlite':
             conn = open_sqlite_connection(config.url)
@@ -542,11 +542,11 @@ class Client(BaseDBPool):
         raise ValueError(f"Unsupported provider '{config.provider}' for datasource 'sqlite'")
 
     def __init__(self) -> None:
-        self.address = AddressTable(cast(BackendProtocol[Address, AddressInsert, AddressWhereDict], self._backend_sqlite()))
-        self.birth_day = BirthDayTable(cast(BackendProtocol[BirthDay, BirthDayInsert, BirthDayWhereDict], self._backend_sqlite()))
-        self.book = BookTable(cast(BackendProtocol[Book, BookInsert, BookWhereDict], self._backend_sqlite()))
-        self.user = UserTable(cast(BackendProtocol[User, UserInsert, UserWhereDict], self._backend_sqlite()))
-        self.user_book = UserBookTable(cast(BackendProtocol[UserBook, UserBookInsert, UserBookWhereDict], self._backend_sqlite()))
+        self.address = AddressTable(cast(BackendProtocol[Address, AddressInsert, AddressWhereDict, AddressIncludeDict, AddressOrderByDict], self._backend_sqlite()))
+        self.birth_day = BirthDayTable(cast(BackendProtocol[BirthDay, BirthDayInsert, BirthDayWhereDict, BirthDayIncludeDict, BirthDayOrderByDict], self._backend_sqlite()))
+        self.book = BookTable(cast(BackendProtocol[Book, BookInsert, BookWhereDict, BookIncludeDict, BookOrderByDict], self._backend_sqlite()))
+        self.user = UserTable(cast(BackendProtocol[User, UserInsert, UserWhereDict, UserIncludeDict, UserOrderByDict], self._backend_sqlite()))
+        self.user_book = UserBookTable(cast(BackendProtocol[UserBook, UserBookInsert, UserBookWhereDict, UserBookIncludeDict, UserBookOrderByDict], self._backend_sqlite()))
 
 
     @classmethod

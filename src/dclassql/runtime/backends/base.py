@@ -263,7 +263,7 @@ class BackendBase[
             state = ensure_lazy_state(
                 instance=instance,
                 attribute=name,
-                backend=cast(BackendProtocol[Any, Any, Mapping[str, object]], self),
+                backend=cast(BackendProtocol[Any, Any, Mapping[str, object], Mapping[str, bool], Mapping[str, Literal['asc', 'desc']]], self),
                 table_cls=cast(type[Any], table_cls),
                 mapping=spec.mapping,
                 many=spec.many,
