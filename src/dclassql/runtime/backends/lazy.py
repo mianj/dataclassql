@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
-from typing import Any, Literal, SupportsIndex, cast
+from typing import Any, Literal, Protocol, SupportsIndex, TypeVar, cast, runtime_checkable
 from weakref import WeakKeyDictionary
 
 from .protocols import BackendProtocol
@@ -118,6 +118,25 @@ class _LazyListProxy(_LazyProxyBase, list[Any]):
 _LAZY_SINGLE_PROXY_CLASS_CACHE: dict[type[Any], type[Any]] = {}
 _LAZY_DESCRIPTOR_CACHE: dict[type[Any], dict[str, _LazyRelationDescriptor]] = {}
 LAZY_RELATION_STATE: WeakKeyDictionary[Any, dict[str, LazyRelationState]] = WeakKeyDictionary()
+
+
+ValueT = TypeVar("ValueT")
+
+
+@runtime_checkable
+class LazyInstance[ValueT](Protocol):
+    __lazy_marker__: bool
+
+    def _lazy_resolve(self) -> ValueT: ...
+
+
+def eager[ValueT](value: LazyInstance[ValueT] | ValueT) -> ValueT:
+    if isinstance(value, list):
+        raise TypeError("eager() does not support lists")
+    if isinstance(value, LazyInstance):
+        resolved = value._lazy_resolve()
+        return cast(ValueT, resolved)
+    return value
 
 
 def ensure_lazy_descriptor(model_cls: type[Any], attribute: str) -> None:

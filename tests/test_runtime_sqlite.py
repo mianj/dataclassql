@@ -12,6 +12,7 @@ import pytest
 
 from dclassql.codegen import generate_client
 from dclassql.push import db_push
+from dclassql.runtime.backends.lazy import eager
 from dclassql.runtime.datasource import open_sqlite_connection
 
 
@@ -269,6 +270,16 @@ def test_lazy_relations(tmp_path: Path):
         assert len(first_user.addresses) == 1
         assert isinstance(first_user.birthday, LazyBirthDay)
         assert str(first_user.birthday.date).startswith("1990-01-01")
+
+        user_again = client.lazy_user.find_first(order_by={"id": "asc"})
+        lazy_birthday_again = user_again.birthday
+        resolved_birthday_again = eager(lazy_birthday_again)
+        assert isinstance(resolved_birthday_again, LazyBirthDay)
+        assert str(resolved_birthday_again.date).startswith("1990-01-01")
+        assert eager(resolved_birthday_again) is resolved_birthday_again
+
+        with pytest.raises(TypeError):
+            eager(user_again.addresses)
 
     finally:
         if ClientClass is not None:
