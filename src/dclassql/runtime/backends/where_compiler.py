@@ -117,7 +117,7 @@ class WhereCompiler:
         field = self._sql_table.field(column)
         return self._compile_value(field, value)
 
-    def _compile_value(self, field: Any, value: object) -> Criterion | None:
+    def _compile_value(self, field: Criterion, value: object) -> Criterion | None:
         if isinstance(value, ABCMapping):
             return self._compile_filter(field, value)
         return self._compile_direct(field, value)
@@ -128,7 +128,7 @@ class WhereCompiler:
         parameter = self._backend._new_bound_parameter(self.params, value)
         return field == parameter
 
-    def _compile_filter(self, field: Any, filters: Mapping[str, object]) -> Criterion | None:
+    def _compile_filter(self, field: Criterion, filters: Mapping[str, object]) -> Criterion | None:
         criteria: list[Criterion | None] = []
         for key, operand in filters.items():
             if not isinstance(key, str):
@@ -136,19 +136,21 @@ class WhereCompiler:
             criteria.append(self._compile_operator(field, key.upper(), operand))
         return combine_and(criteria)
 
-    def _compile_operator(self, field: Any, operator: str, operand: object) -> Criterion | None:
+    def _compile_operator(self, field: Criterion, operator: str, operand: object) -> Criterion | None:
         if operator == "EQ":
             return self._compile_direct(field, operand)
         if operator == "IN":
             values = self._ensure_sequence(operand, label="IN")
             if not values:
-                return Criterion.wrap_constant(False)
+                # Return a criterion that is always false
+                return field == field and field != field
             params = tuple(self._backend._new_bound_parameter(self.params, item) for item in values)
             return field.isin(params)
         if operator == "NOT_IN":
             values = self._ensure_sequence(operand, label="NOT_IN")
             if not values:
-                return Criterion.wrap_constant(True)
+                # Return a criterion that is always true
+                return field == field
             params = tuple(self._backend._new_bound_parameter(self.params, item) for item in values)
             return field.notin(params)
         if operator == "LT":
@@ -164,14 +166,20 @@ class WhereCompiler:
             parameter = self._backend._new_bound_parameter(self.params, operand)
             return field >= parameter
         if operator == "CONTAINS":
+            if isinstance(operand, Parameter):
+                return field.like(operand)
             text = self._ensure_string(operand, operator)
             parameter = self._backend._new_bound_parameter(self.params, f"%{text}%")
             return field.like(parameter)
         if operator == "STARTS_WITH":
+            if isinstance(operand, Parameter):
+                return field.like(operand)
             text = self._ensure_string(operand, operator)
             parameter = self._backend._new_bound_parameter(self.params, f"{text}%")
             return field.like(parameter)
         if operator == "ENDS_WITH":
+            if isinstance(operand, Parameter):
+                return field.like(operand)
             text = self._ensure_string(operand, operator)
             parameter = self._backend._new_bound_parameter(self.params, f"%{text}")
             return field.like(parameter)
