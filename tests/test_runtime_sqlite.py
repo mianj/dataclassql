@@ -67,10 +67,10 @@ def test_insert_and_find_roundtrip(tmp_path: Path):
     fetched = user_table.find_many(where={"name": "Alice"})
     assert [user.name for user in fetched] == ["Alice"]
 
-    ordered = user_table.find_many(order_by=[("name", "desc")])
+    ordered = user_table.find_many(order_by={"name": "desc"})
     assert [user.name for user in ordered] == ["Bob", "Alice"]
 
-    first = user_table.find_first(order_by=[("name", "asc")])
+    first = user_table.find_first(order_by={"name": "asc"})
     assert first.name == "Alice"
     client.__class__.close_all()
 
@@ -89,7 +89,7 @@ def test_insert_many_utilises_backend(tmp_path: Path):
     inserted = user_table.insert_many(rows, batch_size=1)
     assert [user.name for user in inserted] == ["Carol", "Dave"]
 
-    all_rows = user_table.find_many(order_by=[("name", "asc")])
+    all_rows = user_table.find_many(order_by={"name": "asc"})
     assert [user.name for user in all_rows] == ["Carol", "Dave"]
     client.__class__.close_all()
 
@@ -127,7 +127,7 @@ def test_backend_thread_local(tmp_path: Path):
     def worker() -> int | None:
         other_client = namespace["Client"]()
         try:
-            record = other_client.runtime_user.find_first(order_by=[("name", "asc")])
+            record = other_client.runtime_user.find_first(order_by={"name": "asc"})
             return record.id if record else None
         finally:
             other_client.__class__.close_all()
@@ -138,7 +138,7 @@ def test_backend_thread_local(tmp_path: Path):
         future = executor.submit(worker)
         thread_result = future.result()
 
-    main_record = user_table.find_first(order_by=[("name", "asc")])
+    main_record = user_table.find_first(order_by={"name": "asc"})
     assert main_record is not None
     assert thread_result is not None
     client.__class__.close_all()
@@ -154,7 +154,7 @@ def test_find_many_rejects_unknown_columns(tmp_path: Path):
         user_table.find_many(where={"unknown": "value"})
 
     with pytest.raises(ValueError):
-        user_table.find_many(order_by=[("name", "sideways")])
+        user_table.find_many(order_by={"name": "sideways"})
     client.__class__.close_all()
 
 
@@ -233,7 +233,7 @@ def test_lazy_relations(tmp_path: Path):
         client.lazy_birth_day.insert({"user_id": 1, "date": datetime(1990, 1, 1)})
         client.lazy_address.insert({"id": 1, "user_id": 1, "location": "Home"})
 
-        user = client.lazy_user.find_first(order_by=[("id", "asc")])
+        user = client.lazy_user.find_first(order_by={"id": "asc"})
         user_repr = repr(user)
         assert "<LazyRelationList addresses (lazy)>" in user_repr
         assert f"<LazyRelation {LazyBirthDay.__name__} (lazy)>" in user_repr
@@ -253,7 +253,7 @@ def test_lazy_relations(tmp_path: Path):
         assert isinstance(addresses_proxy[0], LazyAddress)
         assert addresses_proxy[0].location == "Home"
 
-        address = client.lazy_address.find_first(order_by=[("id", "asc")])
+        address = client.lazy_address.find_first(order_by={"id": "asc"})
         assert isinstance(address.user, LazyUser)
         assert address.user.name == "Alice"
         assert address.user is address.user

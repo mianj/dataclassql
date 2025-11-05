@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Any, Callable, Mapping, Protocol, Sequence, runtime_checkable
+from typing import Any, Callable, Literal, Mapping, Protocol, Sequence, runtime_checkable
 
 from .metadata import ColumnSpec, ForeignKeySpec, RelationSpec
 
 ConnectionFactory = Callable[[], sqlite3.Connection]
 
 @runtime_checkable
-class TableProtocol[ModelT, InsertT, WhereT](Protocol):
-    def __init__(self, backend: "BackendProtocol[ModelT, InsertT, WhereT]") -> None: ...
+class TableProtocol[
+    ModelT,
+    InsertT,
+    WhereT: Mapping[str, object],
+    IncludeT: Mapping[str, bool],
+    OrderByT: Mapping[str, Literal['asc', 'desc']],
+](Protocol):
+    def __init__(self, backend: "BackendProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT]") -> None: ...
 
     model: type[ModelT]
     insert_model: type[InsertT]
@@ -21,12 +27,22 @@ class TableProtocol[ModelT, InsertT, WhereT](Protocol):
 
 
 @runtime_checkable
-class BackendProtocol[ModelT, InsertT, WhereT](Protocol):
-    def insert(self, table: TableProtocol[ModelT, InsertT, WhereT], data: InsertT | Mapping[str, object]) -> ModelT: ...
+class BackendProtocol[
+    ModelT,
+    InsertT,
+    WhereT: Mapping[str, object],
+    IncludeT: Mapping[str, bool],
+    OrderByT: Mapping[str, Literal['asc', 'desc']],
+](Protocol):
+    def insert(
+        self,
+        table: TableProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT],
+        data: InsertT | Mapping[str, object],
+    ) -> ModelT: ...
 
     def insert_many(
         self,
-        table: TableProtocol[ModelT, InsertT, WhereT],
+        table: TableProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT],
         data: Sequence[InsertT | Mapping[str, object]],
         *,
         batch_size: int | None = None,
@@ -34,21 +50,21 @@ class BackendProtocol[ModelT, InsertT, WhereT](Protocol):
 
     def find_many(
         self,
-        table: TableProtocol[ModelT, InsertT, WhereT],
+        table: TableProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT],
         *,
         where: WhereT | None = None,
-        include: Mapping[str, bool] | None = None,
-        order_by: Sequence[tuple[str, str]] | None = None,
+        include: IncludeT | None = None,
+        order_by: OrderByT | None = None,
         take: int | None = None,
         skip: int | None = None,
     ) -> list[ModelT]: ...
 
     def find_first(
         self,
-        table: TableProtocol[ModelT, InsertT, WhereT],
+        table: TableProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT],
         *,
         where: WhereT | None = None,
-        include: Mapping[str, bool] | None = None,
-        order_by: Sequence[tuple[str, str]] | None = None,
+        include: IncludeT | None = None,
+        order_by: OrderByT | None = None,
         skip: int | None = None,
     ) -> ModelT | None: ...

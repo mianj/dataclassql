@@ -2,14 +2,20 @@ from __future__ import annotations
 
 import sqlite3
 import threading
-from typing import Any, Mapping, Sequence, cast
+from typing import Any, Literal, Mapping, Sequence, cast
 
 from pypika.dialects import SQLLiteQuery
 from .base import BackendBase
 from .protocols import BackendProtocol, ConnectionFactory, TableProtocol
 
 
-class SQLiteBackend[ModelT, InsertT, WhereT: Mapping[str, object]](BackendBase[ModelT, InsertT, WhereT]):
+class SQLiteBackend[
+    ModelT,
+    InsertT,
+    WhereT: Mapping[str, object],
+    IncludeT: Mapping[str, bool],
+    OrderByT: Mapping[str, Literal['asc', 'desc']],
+](BackendBase[ModelT, InsertT, WhereT, IncludeT, OrderByT]):
     query_cls = SQLLiteQuery
 
     def __init__(self, source: sqlite3.Connection | ConnectionFactory | "SQLiteBackend") -> None:
@@ -33,7 +39,7 @@ class SQLiteBackend[ModelT, InsertT, WhereT: Mapping[str, object]](BackendBase[M
 
     def insert_many(
         self,
-        table: TableProtocol[ModelT, InsertT, WhereT],
+        table,
         data: Sequence[InsertT | Mapping[str, object]],
         *,
         batch_size: int | None = None,
@@ -101,7 +107,7 @@ class SQLiteBackend[ModelT, InsertT, WhereT: Mapping[str, object]](BackendBase[M
 
     def _resolve_primary_key(
         self,
-        table: TableProtocol[ModelT, InsertT, WhereT],
+        table,
         payload: Mapping[str, object],
         cursor: Any,
     ) -> dict[str, object]:

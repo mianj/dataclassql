@@ -114,7 +114,7 @@ def test_generate_client_matches_expected_shape() -> None:
 
     include_alias = namespace['TUserIncludeCol']
     assert get_origin(include_alias) is Literal
-    assert set(get_args(include_alias)) == {'Address', 'BirthDay', 'UserBook'}
+    assert set(get_args(include_alias)) == {'addresses', 'birthday', 'books'}
 
     sortable_alias = namespace['TUserSortableCol']
     assert get_origin(sortable_alias) is Literal
@@ -206,22 +206,23 @@ def test_generate_client_matches_expected_shape() -> None:
     assert type(None) in include_args
     include_args.remove(type(None))
     (include_dict_type,) = tuple(include_args)
-    assert get_origin(include_dict_type) is dict
-    dict_key_type, dict_value_type = get_args(include_dict_type)
-    assert dict_key_type is include_alias
-    assert dict_value_type is bool
+    assert include_dict_type is namespace['UserIncludeDict']
+    assert getattr(include_dict_type, '__total__') is False
+    include_dict_hints = get_type_hints(include_dict_type, globalns=namespace, localns=namespace)
+    assert include_dict_hints == {name: bool for name in get_args(include_alias)}
 
     order_union = find_many_hints['order_by']
     order_args = set(get_args(order_union))
     assert type(None) in order_args
     order_args.remove(type(None))
-    (order_seq_type,) = tuple(order_args)
-    assert get_origin(order_seq_type) is ABCSequence
-    order_tuple_type = get_args(order_seq_type)[0]
-    assert get_origin(order_tuple_type) is tuple
-    literal_type = get_args(order_tuple_type)[1]
-    assert get_origin(literal_type) is Literal
-    assert set(get_args(literal_type)) == {'asc', 'desc'}
+    (order_dict_type,) = tuple(order_args)
+    assert order_dict_type is namespace['UserOrderByDict']
+    assert getattr(order_dict_type, '__total__') is False
+    order_dict_hints = get_type_hints(order_dict_type, globalns=namespace, localns=namespace)
+    assert set(order_dict_hints.keys()) == set(column_names)
+    for annotation in order_dict_hints.values():
+        assert get_origin(annotation) is Literal
+        assert set(get_args(annotation)) == {'asc', 'desc'}
 
     find_first_hints = get_type_hints(user_table_cls.find_first, globalns=namespace, localns=namespace)
     assert find_first_hints['return'] == namespace['User'] | type(None)
@@ -230,8 +231,7 @@ def test_generate_client_matches_expected_shape() -> None:
     assert type(None) in include_args_first
     include_args_first.remove(type(None))
     (include_dict_first,) = tuple(include_args_first)
-    assert get_origin(include_dict_first) is dict
-    assert get_args(include_dict_first)[0] is include_alias
+    assert include_dict_first is namespace['UserIncludeDict']
 
 
 def test_generated_client_supports_named_datasources() -> None:

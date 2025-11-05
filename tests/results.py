@@ -33,8 +33,21 @@ class DataSourceConfig:
 
 
 
-TAddressIncludeCol = Literal['User']
+
+
+
+
+
+
+
+
+
+
+TAddressIncludeCol = Literal['user']
+
+
 TAddressSortableCol = Literal['id', 'location', 'user_id']
+
 
 @dataclass(slots=True, kw_only=True)
 class AddressInsert:
@@ -54,6 +67,18 @@ class AddressWhereDict(TypedDict, total=False):
     id: int | None
     location: str | None
     user_id: int | None
+
+class AddressIncludeDict(TypedDict, total=False):
+
+    user: bool
+
+
+class AddressOrderByDict(TypedDict, total=False):
+
+    id: Literal['asc', 'desc']
+    location: Literal['asc', 'desc']
+    user_id: Literal['asc', 'desc']
+
 
 class AddressTable:
     model = Address
@@ -80,8 +105,8 @@ class AddressTable:
         RelationSpec(name='user', table_name='UserTable', table_module=__name__, many=False, mapping=(('user_id', 'id'),), table_factory=lambda: UserTable),
     )
 
-    def __init__(self, backend: BackendProtocol[Address, AddressInsert, AddressWhereDict]) -> None:
-        self._backend: BackendProtocol[Address, AddressInsert, AddressWhereDict] = backend
+    def __init__(self, backend: BackendProtocol[Address, AddressInsert, AddressWhereDict, AddressIncludeDict, AddressOrderByDict]) -> None:
+        self._backend = backend
 
     def insert(self, data: AddressInsert | AddressInsertDict) -> Address:
         return self._backend.insert(self, data)
@@ -89,11 +114,19 @@ class AddressTable:
     def insert_many(self, data: Sequence[AddressInsert | AddressInsertDict], *, batch_size: int | None = None) -> list[Address]:
         return self._backend.insert_many(self, data, batch_size=batch_size)
 
-    def find_many(self, *, where: AddressWhereDict | None = None, include: dict[TAddressIncludeCol, bool] | None = None, order_by: Sequence[tuple[TAddressSortableCol, Literal['asc', 'desc']]] | None = None, take: int | None = None, skip: int | None = None) -> list[Address]:
-        return self._backend.find_many(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, take=take, skip=skip)
+    def find_many(self, *, where: AddressWhereDict | None = None, include: AddressIncludeDict | None = None, order_by: AddressOrderByDict | None = None, take: int | None = None, skip: int | None = None) -> list[Address]:
+        return self._backend.find_many(
+            self, 
+            where=cast(dict, where), include=cast(dict, include), order_by=cast(dict, order_by), 
+            take=take, skip=skip
+        )
 
-    def find_first(self, *, where: AddressWhereDict | None = None, include: dict[TAddressIncludeCol, bool] | None = None, order_by: Sequence[tuple[TAddressSortableCol, Literal['asc', 'desc']]] | None = None, skip: int | None = None) -> Address | None:
-        return self._backend.find_first(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, skip=skip)
+    def find_first(self, *, where: AddressWhereDict | None = None, include: AddressIncludeDict | None = None, order_by: AddressOrderByDict | None = None, skip: int | None = None) -> Address | None:
+        return self._backend.find_first(
+            self, 
+            where=cast(dict, where), include=cast(dict, include), order_by=cast(dict, order_by), 
+            skip=skip
+        )
 
 
 
@@ -101,8 +134,21 @@ class AddressTable:
 
 
 
-TBirthDayIncludeCol = Literal['User']
+
+
+
+
+
+
+
+
+
+
+TBirthDayIncludeCol = Literal['user']
+
+
 TBirthDaySortableCol = Literal['user_id', 'date']
+
 
 @dataclass(slots=True, kw_only=True)
 class BirthDayInsert:
@@ -119,6 +165,17 @@ class BirthDayWhereDict(TypedDict, total=False):
     
     user_id: int | None
     date: datetime | None
+
+class BirthDayIncludeDict(TypedDict, total=False):
+
+    user: bool
+
+
+class BirthDayOrderByDict(TypedDict, total=False):
+
+    user_id: Literal['asc', 'desc']
+    date: Literal['asc', 'desc']
+
 
 class BirthDayTable:
     model = BirthDay
@@ -144,8 +201,8 @@ class BirthDayTable:
         RelationSpec(name='user', table_name='UserTable', table_module=__name__, many=False, mapping=(('user_id', 'id'),), table_factory=lambda: UserTable),
     )
 
-    def __init__(self, backend: BackendProtocol[BirthDay, BirthDayInsert, BirthDayWhereDict]) -> None:
-        self._backend: BackendProtocol[BirthDay, BirthDayInsert, BirthDayWhereDict] = backend
+    def __init__(self, backend: BackendProtocol[BirthDay, BirthDayInsert, BirthDayWhereDict, BirthDayIncludeDict, BirthDayOrderByDict]) -> None:
+        self._backend = backend
 
     def insert(self, data: BirthDayInsert | BirthDayInsertDict) -> BirthDay:
         return self._backend.insert(self, data)
@@ -153,11 +210,19 @@ class BirthDayTable:
     def insert_many(self, data: Sequence[BirthDayInsert | BirthDayInsertDict], *, batch_size: int | None = None) -> list[BirthDay]:
         return self._backend.insert_many(self, data, batch_size=batch_size)
 
-    def find_many(self, *, where: BirthDayWhereDict | None = None, include: dict[TBirthDayIncludeCol, bool] | None = None, order_by: Sequence[tuple[TBirthDaySortableCol, Literal['asc', 'desc']]] | None = None, take: int | None = None, skip: int | None = None) -> list[BirthDay]:
-        return self._backend.find_many(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, take=take, skip=skip)
+    def find_many(self, *, where: BirthDayWhereDict | None = None, include: BirthDayIncludeDict | None = None, order_by: BirthDayOrderByDict | None = None, take: int | None = None, skip: int | None = None) -> list[BirthDay]:
+        return self._backend.find_many(
+            self, 
+            where=cast(dict, where), include=cast(dict, include), order_by=cast(dict, order_by), 
+            take=take, skip=skip
+        )
 
-    def find_first(self, *, where: BirthDayWhereDict | None = None, include: dict[TBirthDayIncludeCol, bool] | None = None, order_by: Sequence[tuple[TBirthDaySortableCol, Literal['asc', 'desc']]] | None = None, skip: int | None = None) -> BirthDay | None:
-        return self._backend.find_first(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, skip=skip)
+    def find_first(self, *, where: BirthDayWhereDict | None = None, include: BirthDayIncludeDict | None = None, order_by: BirthDayOrderByDict | None = None, skip: int | None = None) -> BirthDay | None:
+        return self._backend.find_first(
+            self, 
+            where=cast(dict, where), include=cast(dict, include), order_by=cast(dict, order_by), 
+            skip=skip
+        )
 
 
 
@@ -165,8 +230,21 @@ class BirthDayTable:
 
 
 
-TBookIncludeCol = Literal['UserBook']
+
+
+
+
+
+
+
+
+
+
+TBookIncludeCol = Literal['users']
+
+
 TBookSortableCol = Literal['id', 'name']
+
 
 @dataclass(slots=True, kw_only=True)
 class BookInsert:
@@ -183,6 +261,17 @@ class BookWhereDict(TypedDict, total=False):
     
     id: int | None
     name: str | None
+
+class BookIncludeDict(TypedDict, total=False):
+
+    users: bool
+
+
+class BookOrderByDict(TypedDict, total=False):
+
+    id: Literal['asc', 'desc']
+    name: Literal['asc', 'desc']
+
 
 class BookTable:
     model = Book
@@ -201,8 +290,8 @@ class BookTable:
         RelationSpec(name='users', table_name='UserBookTable', table_module=__name__, many=True, mapping=(('id', 'book_id'),), table_factory=lambda: UserBookTable),
     )
 
-    def __init__(self, backend: BackendProtocol[Book, BookInsert, BookWhereDict]) -> None:
-        self._backend: BackendProtocol[Book, BookInsert, BookWhereDict] = backend
+    def __init__(self, backend: BackendProtocol[Book, BookInsert, BookWhereDict, BookIncludeDict, BookOrderByDict]) -> None:
+        self._backend = backend
 
     def insert(self, data: BookInsert | BookInsertDict) -> Book:
         return self._backend.insert(self, data)
@@ -210,11 +299,19 @@ class BookTable:
     def insert_many(self, data: Sequence[BookInsert | BookInsertDict], *, batch_size: int | None = None) -> list[Book]:
         return self._backend.insert_many(self, data, batch_size=batch_size)
 
-    def find_many(self, *, where: BookWhereDict | None = None, include: dict[TBookIncludeCol, bool] | None = None, order_by: Sequence[tuple[TBookSortableCol, Literal['asc', 'desc']]] | None = None, take: int | None = None, skip: int | None = None) -> list[Book]:
-        return self._backend.find_many(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, take=take, skip=skip)
+    def find_many(self, *, where: BookWhereDict | None = None, include: BookIncludeDict | None = None, order_by: BookOrderByDict | None = None, take: int | None = None, skip: int | None = None) -> list[Book]:
+        return self._backend.find_many(
+            self, 
+            where=cast(dict, where), include=cast(dict, include), order_by=cast(dict, order_by), 
+            take=take, skip=skip
+        )
 
-    def find_first(self, *, where: BookWhereDict | None = None, include: dict[TBookIncludeCol, bool] | None = None, order_by: Sequence[tuple[TBookSortableCol, Literal['asc', 'desc']]] | None = None, skip: int | None = None) -> Book | None:
-        return self._backend.find_first(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, skip=skip)
+    def find_first(self, *, where: BookWhereDict | None = None, include: BookIncludeDict | None = None, order_by: BookOrderByDict | None = None, skip: int | None = None) -> Book | None:
+        return self._backend.find_first(
+            self, 
+            where=cast(dict, where), include=cast(dict, include), order_by=cast(dict, order_by), 
+            skip=skip
+        )
 
 
 
@@ -222,8 +319,21 @@ class BookTable:
 
 
 
-TUserIncludeCol = Literal['Address', 'BirthDay', 'UserBook']
+
+
+
+
+
+
+
+
+
+
+TUserIncludeCol = Literal['addresses', 'birthday', 'books']
+
+
 TUserSortableCol = Literal['id', 'name', 'email', 'last_login']
+
 
 @dataclass(slots=True, kw_only=True)
 class UserInsert:
@@ -247,6 +357,21 @@ class UserWhereDict(TypedDict, total=False):
     email: str | None
     last_login: datetime | None
 
+class UserIncludeDict(TypedDict, total=False):
+
+    addresses: bool
+    birthday: bool
+    books: bool
+
+
+class UserOrderByDict(TypedDict, total=False):
+
+    id: Literal['asc', 'desc']
+    name: Literal['asc', 'desc']
+    email: Literal['asc', 'desc']
+    last_login: Literal['asc', 'desc']
+
+
 class UserTable:
     model = User
     insert_model = UserInsert
@@ -268,8 +393,8 @@ class UserTable:
         RelationSpec(name='books', table_name='UserBookTable', table_module=__name__, many=True, mapping=(('id', 'user_id'),), table_factory=lambda: UserBookTable),
     )
 
-    def __init__(self, backend: BackendProtocol[User, UserInsert, UserWhereDict]) -> None:
-        self._backend: BackendProtocol[User, UserInsert, UserWhereDict] = backend
+    def __init__(self, backend: BackendProtocol[User, UserInsert, UserWhereDict, UserIncludeDict, UserOrderByDict]) -> None:
+        self._backend = backend
 
     def insert(self, data: UserInsert | UserInsertDict) -> User:
         return self._backend.insert(self, data)
@@ -277,11 +402,19 @@ class UserTable:
     def insert_many(self, data: Sequence[UserInsert | UserInsertDict], *, batch_size: int | None = None) -> list[User]:
         return self._backend.insert_many(self, data, batch_size=batch_size)
 
-    def find_many(self, *, where: UserWhereDict | None = None, include: dict[TUserIncludeCol, bool] | None = None, order_by: Sequence[tuple[TUserSortableCol, Literal['asc', 'desc']]] | None = None, take: int | None = None, skip: int | None = None) -> list[User]:
-        return self._backend.find_many(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, take=take, skip=skip)
+    def find_many(self, *, where: UserWhereDict | None = None, include: UserIncludeDict | None = None, order_by: UserOrderByDict | None = None, take: int | None = None, skip: int | None = None) -> list[User]:
+        return self._backend.find_many(
+            self, 
+            where=cast(dict, where), include=cast(dict, include), order_by=cast(dict, order_by), 
+            take=take, skip=skip
+        )
 
-    def find_first(self, *, where: UserWhereDict | None = None, include: dict[TUserIncludeCol, bool] | None = None, order_by: Sequence[tuple[TUserSortableCol, Literal['asc', 'desc']]] | None = None, skip: int | None = None) -> User | None:
-        return self._backend.find_first(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, skip=skip)
+    def find_first(self, *, where: UserWhereDict | None = None, include: UserIncludeDict | None = None, order_by: UserOrderByDict | None = None, skip: int | None = None) -> User | None:
+        return self._backend.find_first(
+            self, 
+            where=cast(dict, where), include=cast(dict, include), order_by=cast(dict, order_by), 
+            skip=skip
+        )
 
 
 
@@ -289,8 +422,21 @@ class UserTable:
 
 
 
-TUserBookIncludeCol = Literal['Book', 'User']
+
+
+
+
+
+
+
+
+
+
+TUserBookIncludeCol = Literal['book', 'user']
+
+
 TUserBookSortableCol = Literal['user_id', 'book_id', 'created_at']
+
 
 @dataclass(slots=True, kw_only=True)
 class UserBookInsert:
@@ -310,6 +456,19 @@ class UserBookWhereDict(TypedDict, total=False):
     user_id: int | None
     book_id: int | None
     created_at: datetime | None
+
+class UserBookIncludeDict(TypedDict, total=False):
+
+    book: bool
+    user: bool
+
+
+class UserBookOrderByDict(TypedDict, total=False):
+
+    user_id: Literal['asc', 'desc']
+    book_id: Literal['asc', 'desc']
+    created_at: Literal['asc', 'desc']
+
 
 class UserBookTable:
     model = UserBook
@@ -343,8 +502,8 @@ class UserBookTable:
         RelationSpec(name='book', table_name='BookTable', table_module=__name__, many=False, mapping=(('book_id', 'id'),), table_factory=lambda: BookTable),
     )
 
-    def __init__(self, backend: BackendProtocol[UserBook, UserBookInsert, UserBookWhereDict]) -> None:
-        self._backend: BackendProtocol[UserBook, UserBookInsert, UserBookWhereDict] = backend
+    def __init__(self, backend: BackendProtocol[UserBook, UserBookInsert, UserBookWhereDict, UserBookIncludeDict, UserBookOrderByDict]) -> None:
+        self._backend = backend
 
     def insert(self, data: UserBookInsert | UserBookInsertDict) -> UserBook:
         return self._backend.insert(self, data)
@@ -352,11 +511,19 @@ class UserBookTable:
     def insert_many(self, data: Sequence[UserBookInsert | UserBookInsertDict], *, batch_size: int | None = None) -> list[UserBook]:
         return self._backend.insert_many(self, data, batch_size=batch_size)
 
-    def find_many(self, *, where: UserBookWhereDict | None = None, include: dict[TUserBookIncludeCol, bool] | None = None, order_by: Sequence[tuple[TUserBookSortableCol, Literal['asc', 'desc']]] | None = None, take: int | None = None, skip: int | None = None) -> list[UserBook]:
-        return self._backend.find_many(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, take=take, skip=skip)
+    def find_many(self, *, where: UserBookWhereDict | None = None, include: UserBookIncludeDict | None = None, order_by: UserBookOrderByDict | None = None, take: int | None = None, skip: int | None = None) -> list[UserBook]:
+        return self._backend.find_many(
+            self, 
+            where=cast(dict, where), include=cast(dict, include), order_by=cast(dict, order_by), 
+            take=take, skip=skip
+        )
 
-    def find_first(self, *, where: UserBookWhereDict | None = None, include: dict[TUserBookIncludeCol, bool] | None = None, order_by: Sequence[tuple[TUserBookSortableCol, Literal['asc', 'desc']]] | None = None, skip: int | None = None) -> UserBook | None:
-        return self._backend.find_first(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, skip=skip)
+    def find_first(self, *, where: UserBookWhereDict | None = None, include: UserBookIncludeDict | None = None, order_by: UserBookOrderByDict | None = None, skip: int | None = None) -> UserBook | None:
+        return self._backend.find_first(
+            self, 
+            where=cast(dict, where), include=cast(dict, include), order_by=cast(dict, order_by), 
+            skip=skip
+        )
 
 
 class Client(BaseDBPool):
@@ -392,37 +559,46 @@ class Client(BaseDBPool):
             delattr(cls._local, '_backend_sqlite')
 
 
-
 __all__ = (
     "DataSourceConfig",
     "ForeignKeySpec",
     "Client",
     "TAddressIncludeCol",
     "TAddressSortableCol",
+    "AddressIncludeDict",
+    "AddressOrderByDict",
     "AddressInsert",
     "AddressInsertDict",
     "AddressWhereDict",
     "AddressTable",
     "TBirthDayIncludeCol",
     "TBirthDaySortableCol",
+    "BirthDayIncludeDict",
+    "BirthDayOrderByDict",
     "BirthDayInsert",
     "BirthDayInsertDict",
     "BirthDayWhereDict",
     "BirthDayTable",
     "TBookIncludeCol",
     "TBookSortableCol",
+    "BookIncludeDict",
+    "BookOrderByDict",
     "BookInsert",
     "BookInsertDict",
     "BookWhereDict",
     "BookTable",
     "TUserIncludeCol",
     "TUserSortableCol",
+    "UserIncludeDict",
+    "UserOrderByDict",
     "UserInsert",
     "UserInsertDict",
     "UserWhereDict",
     "UserTable",
     "TUserBookIncludeCol",
     "TUserBookSortableCol",
+    "UserBookIncludeDict",
+    "UserBookOrderByDict",
     "UserBookInsert",
     "UserBookInsertDict",
     "UserBookWhereDict",

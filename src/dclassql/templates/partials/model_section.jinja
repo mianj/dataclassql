@@ -1,11 +1,28 @@
 {% set name = model.name %}
+{% set info = model.model_info %}
 {% set insert_class = name ~ 'Insert' %}
 {% set insert_dict_class = name ~ 'InsertDict' %}
 {% set where_dict_class = name ~ 'WhereDict' %}
+{% set include_dict_class = name ~ 'IncludeDict' %}
+{% set order_by_dict_class = name ~ 'OrderByDict' %}
 {% set table_class = name ~ 'Table' %}
+{% set include_alias = 'T' ~ name ~ 'IncludeCol' %}
+{% set sortable_alias = 'T' ~ name ~ 'SortableCol' %}
+{% set include_relations = info.relations | sort(attribute='name', case_sensitive=True) %}
+{% set sortable_columns = info.columns %}
 
-{{ model.include_alias }} = {{ model.include_literal_expr }}
-{{ model.sortable_alias }} = {{ model.sortable_literal_expr }}
+{% set backend_signature = 'BackendProtocol[{}, {}, {}, {}, {}]'.format(name, insert_class, where_dict_class, include_dict_class, order_by_dict_class) %}
+
+{% if include_relations %}
+{{ include_alias }} = Literal[{% for relation in include_relations %}'{{ relation.name }}'{% if not loop.last %}, {% endif %}{% endfor %}]
+{% else %}
+{{ include_alias }} = Literal[()]
+{% endif %}
+{% if sortable_columns %}
+{{ sortable_alias }} = Literal[{% for column in sortable_columns %}'{{ column.name }}'{% if not loop.last %}, {% endif %}{% endfor %}]
+{% else %}
+{{ sortable_alias }} = Literal[()]
+{% endif %}
 
 @dataclass(slots=True, kw_only=True)
 class {{ insert_class }}:
@@ -16,6 +33,20 @@ class {{ insert_dict_class }}(TypedDict):
 
 class {{ where_dict_class }}(TypedDict, total=False):
 {{ macros.where_fields(model.where_fields)|indent(4, True) }}
+
+class {{ include_dict_class }}(TypedDict, total=False):
+{% if include_relations %}
+{% for relation in include_relations %}    {{ relation.name }}: bool
+{% endfor %}{% else %}
+    pass
+{% endif %}
+
+class {{ order_by_dict_class }}(TypedDict, total=False):
+{% if sortable_columns %}
+{% for column in sortable_columns %}    {{ column.name }}: Literal['asc', 'desc']
+{% endfor %}{% else %}
+    pass
+{% endif %}
 
 class {{ table_class }}:
     model = {{ name }}
@@ -29,8 +60,8 @@ class {{ table_class }}:
 {{ macros.foreign_keys(model.foreign_keys)|indent(4, True) }}
 {{ macros.relations(model.relation_entries)|indent(4, True) }}
 
-    def __init__(self, backend: BackendProtocol[{{ name }}, {{ insert_class }}, {{ where_dict_class }}]) -> None:
-        self._backend: BackendProtocol[{{ name }}, {{ insert_class }}, {{ where_dict_class }}] = backend
+    def __init__(self, backend: {{ backend_signature }}) -> None:
+        self._backend = backend
 
     def insert(self, data: {{ insert_class }} | {{ insert_dict_class }}) -> {{ name }}:
         return self._backend.insert(self, data)
@@ -38,8 +69,16 @@ class {{ table_class }}:
     def insert_many(self, data: Sequence[{{ insert_class }} | {{ insert_dict_class }}], *, batch_size: int | None = None) -> list[{{ name }}]:
         return self._backend.insert_many(self, data, batch_size=batch_size)
 
-    def find_many(self, *, where: {{ where_dict_class }} | None = None, include: dict[{{ model.include_alias }}, bool] | None = None, order_by: Sequence[tuple[{{ model.sortable_alias }}, Literal['asc', 'desc']]] | None = None, take: int | None = None, skip: int | None = None) -> list[{{ name }}]:
-        return self._backend.find_many(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, take=take, skip=skip)
+    def find_many(self, *, where: {{ where_dict_class }} | None = None, include: {{ include_dict_class }} | None = None, order_by: {{ order_by_dict_class }} | None = None, take: int | None = None, skip: int | None = None) -> list[{{ name }}]:
+        return self._backend.find_many(
+            self, 
+            where=cast(dict, where), include=cast(dict, include), order_by=cast(dict, order_by), 
+            take=take, skip=skip
+        )
 
-    def find_first(self, *, where: {{ where_dict_class }} | None = None, include: dict[{{ model.include_alias }}, bool] | None = None, order_by: Sequence[tuple[{{ model.sortable_alias }}, Literal['asc', 'desc']]] | None = None, skip: int | None = None) -> {{ name }} | None:
-        return self._backend.find_first(self, where=where, include=cast(Mapping[str, bool] | None, include), order_by=order_by, skip=skip)
+    def find_first(self, *, where: {{ where_dict_class }} | None = None, include: {{ include_dict_class }} | None = None, order_by: {{ order_by_dict_class }} | None = None, skip: int | None = None) -> {{ name }} | None:
+        return self._backend.find_first(
+            self, 
+            where=cast(dict, where), include=cast(dict, include), order_by=cast(dict, order_by), 
+            skip=skip
+        )

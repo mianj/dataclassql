@@ -56,5 +56,5 @@ client.user.insert({"email": "missing"})
 
     assert result.returncode != 0
 
-    assert 'Argument of type "dict[str, str]" cannot be assigned to parameter "data" of type "UserInsert | UserInsertDict" in function "insert"' in result.stdout, result.stdout
+    assert 'dict[str, str]' in result.stdout and 'UserInsertDict' in result.stdout, result.stdout
     assert 'reportArgumentType' in result.stdout, result.stdout

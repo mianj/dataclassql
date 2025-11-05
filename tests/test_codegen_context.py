@@ -24,8 +24,8 @@ def test_model_context_shapes_insert_and_typeddict_sections() -> None:
 
     address_ctx = _build_model_context(model_infos["Address"], renderer, model_infos)
 
-    assert address_ctx.include_alias == "TAddressIncludeCol"
-    assert address_ctx.sortable_alias == "TAddressSortableCol"
+    assert address_ctx.name == "Address"
+    assert address_ctx.model_info is model_infos["Address"]
 
     id_field = next(field for field in address_ctx.insert_fields if field.name == "id")
     assert id_field.default_expr == "None"
@@ -38,9 +38,10 @@ def test_model_context_shapes_insert_and_typeddict_sections() -> None:
 
     assert any(spec.auto_increment for spec in address_ctx.column_specs)
     assert "NotRequired" in renderer.typing_names
-    assert address_ctx.include_literal_expr.startswith("Literal[")
-    assert "'User'" in address_ctx.include_literal_expr
-    assert address_ctx.sortable_literal_expr.startswith("Literal[")
+    relation_names = sorted(rel.name for rel in address_ctx.model_info.relations)
+    assert relation_names == ["user"]
+    column_names = [col.name for col in address_ctx.model_info.columns]
+    assert column_names == ["id", "location", "user_id"]
 
 
 def test_client_context_binds_models_to_datasource_backends() -> None:
@@ -72,3 +73,5 @@ def test_collect_exports_includes_expected_symbols() -> None:
     for name in ("User", "Address", "BirthDay"):
         assert f"{name}Table" in exports
         assert f"T{name}IncludeCol" in exports
+        assert f"{name}IncludeDict" in exports
+        assert f"{name}OrderByDict" in exports

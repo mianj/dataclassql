@@ -72,10 +72,6 @@ class RelationRender:
 @dataclass(slots=True)
 class ModelRenderContext:
     name: str
-    include_alias: str
-    include_literal_expr: str
-    sortable_alias: str
-    sortable_literal_expr: str
     datasource_expr: str
     insert_fields: tuple[InsertFieldSpec, ...]
     typed_dict_fields: tuple[TypedDictFieldSpec, ...]
@@ -86,6 +82,7 @@ class ModelRenderContext:
     primary_key_literal: str
     indexes_literal: str
     unique_indexes_literal: str
+    model_info: ModelInfo
 
 
 @dataclass(slots=True)
@@ -181,13 +178,6 @@ def _build_model_context(
     model_infos: Mapping[str, ModelInfo],
 ) -> ModelRenderContext:
     name = info.model.__name__
-    include_literals = sorted({relation.target.__name__ for relation in info.relations})
-    sortable_literals = [col.name for col in info.columns]
-
-    include_alias = f"T{name}IncludeCol"
-    include_literal_expr = _literal_expression(include_literals)
-    sortable_alias = f"T{name}SortableCol"
-    sortable_literal_expr = _literal_expression(sortable_literals)
 
     insert_fields: list[InsertFieldSpec] = []
     typed_dict_fields: list[TypedDictFieldSpec] = []
@@ -262,10 +252,6 @@ def _build_model_context(
 
     return ModelRenderContext(
         name=name,
-        include_alias=include_alias,
-        include_literal_expr=include_literal_expr,
-        sortable_alias=sortable_alias,
-        sortable_literal_expr=sortable_literal_expr,
         datasource_expr=datasource_expr,
         insert_fields=tuple(insert_fields),
         typed_dict_fields=tuple(typed_dict_fields),
@@ -276,6 +262,7 @@ def _build_model_context(
         primary_key_literal=_tuple_literal(info.primary_key),
         indexes_literal=indexes_literal,
         unique_indexes_literal=unique_indexes_literal,
+        model_info=info,
     )
 
 
@@ -331,6 +318,8 @@ def _collect_exports(model_infos: Mapping[str, ModelInfo]) -> list[str]:
             [
                 f"T{name}IncludeCol",
                 f"T{name}SortableCol",
+                f"{name}IncludeDict",
+                f"{name}OrderByDict",
                 f"{name}Insert",
                 f"{name}InsertDict",
                 f"{name}WhereDict",

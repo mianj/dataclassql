@@ -26,4 +26,3 @@ class Client(BaseDBPool):
                 backend.close()
             delattr(cls._local, '{{ method.method_name }}')
 {% endfor %}
-

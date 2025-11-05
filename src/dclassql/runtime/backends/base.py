@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from abc import ABC, abstractmethod
 from dataclasses import MISSING, fields, is_dataclass
-from typing import Any, Mapping, Sequence, cast, get_origin
+from typing import Any, Literal, Mapping, Sequence, cast, get_origin
 
 from pypika import Query, Table
 from pypika.enums import Order
@@ -13,7 +13,13 @@ from .lazy import ensure_lazy_state, finalize_lazy_state, reset_lazy_backref
 from .protocols import BackendProtocol, RelationSpec, TableProtocol
 
 
-class BackendBase[ModelT, InsertT, WhereT: Mapping[str, object]](BackendProtocol[ModelT, InsertT, WhereT], ABC):
+class BackendBase[
+    ModelT,
+    InsertT,
+    WhereT: Mapping[str, object],
+    IncludeT: Mapping[str, bool],
+    OrderByT: Mapping[str, Literal['asc', 'desc']],
+](BackendProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT], ABC):
     quote_char: str = '"'
     parameter_token: str = '?'
     query_cls: type[Query] = Query
@@ -23,7 +29,11 @@ class BackendBase[ModelT, InsertT, WhereT: Mapping[str, object]](BackendProtocol
     def __init__(self) -> None:
         self._identity_map: dict[tuple[type[Any], tuple[Any, ...]], Any] = {}
 
-    def insert(self, table: TableProtocol[ModelT, InsertT, WhereT], data: InsertT | Mapping[str, object]) -> ModelT:
+    def insert(
+        self,
+        table: TableProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT],
+        data: InsertT | Mapping[str, object],
+    ) -> ModelT:
         payload = self._normalize_insert_payload(table, data)
         if not payload:
             raise ValueError("Insert payload cannot be empty")
@@ -46,7 +56,7 @@ class BackendBase[ModelT, InsertT, WhereT: Mapping[str, object]](BackendProtocol
 
     def insert_many(
         self,
-        table: TableProtocol[ModelT, InsertT, WhereT],
+        table: TableProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT],
         data: Sequence[InsertT | Mapping[str, object]],
         *,
         batch_size: int | None = None,
@@ -56,11 +66,11 @@ class BackendBase[ModelT, InsertT, WhereT: Mapping[str, object]](BackendProtocol
 
     def find_many(
         self,
-        table: TableProtocol[ModelT, InsertT, WhereT],
+        table: TableProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT],
         *,
         where: WhereT | None = None,
         include: Mapping[str, bool] | None = None,
-        order_by: Sequence[tuple[str, str]] | None = None,
+        order_by: Mapping[str, str] | None = None,
         take: int | None = None,
         skip: int | None = None,
     ) -> list[ModelT]:
@@ -82,7 +92,7 @@ class BackendBase[ModelT, InsertT, WhereT: Mapping[str, object]](BackendProtocol
                     params.append(value)
 
         if order_by:
-            for column, direction in order_by:
+            for column, direction in order_by.items():
                 if column not in table.column_specs_by_name:
                     raise KeyError(f"Unknown column '{column}' in order_by clause")
                 direction_lower = direction.lower()
@@ -102,11 +112,11 @@ class BackendBase[ModelT, InsertT, WhereT: Mapping[str, object]](BackendProtocol
 
     def find_first(
         self,
-        table: TableProtocol[ModelT, InsertT, WhereT],
+        table: TableProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT],
         *,
         where: WhereT | None = None,
         include: Mapping[str, bool] | None = None,
-        order_by: Sequence[tuple[str, str]] | None = None,
+        order_by: Mapping[str, str] | None = None,
         skip: int | None = None,
     ) -> ModelT | None:
         results = self.find_many(
@@ -121,7 +131,7 @@ class BackendBase[ModelT, InsertT, WhereT: Mapping[str, object]](BackendProtocol
 
     def _normalize_insert_payload(
         self,
-        table: TableProtocol[ModelT, InsertT, WhereT],
+        table: TableProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT],
         data: InsertT | Mapping[str, object],
     ) -> dict[str, object]:
         spec_map = table.column_specs_by_name
@@ -136,7 +146,7 @@ class BackendBase[ModelT, InsertT, WhereT: Mapping[str, object]](BackendProtocol
 
     def _row_to_model(
         self,
-        table: TableProtocol[ModelT, Any, Any],
+        table: TableProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT],
         row: Any,
         include_map: Mapping[str, bool],
     ) -> ModelT:
@@ -174,7 +184,7 @@ class BackendBase[ModelT, InsertT, WhereT: Mapping[str, object]](BackendProtocol
 
     def _fetch_single(
         self,
-        table: TableProtocol[ModelT, InsertT, WhereT],
+        table: TableProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT],
         where: Mapping[str, object],
         include: Mapping[str, bool] | None,
     ) -> ModelT:
@@ -185,7 +195,7 @@ class BackendBase[ModelT, InsertT, WhereT: Mapping[str, object]](BackendProtocol
 
     def _invalidate_backrefs(
         self,
-        table: TableProtocol[ModelT, Any, Any],
+        table: TableProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT],
         instance: ModelT,
     ) -> None:
         foreign_keys = table.foreign_keys
@@ -215,7 +225,7 @@ class BackendBase[ModelT, InsertT, WhereT: Mapping[str, object]](BackendProtocol
 
     def _identity_key(
         self,
-        table: TableProtocol[ModelT, Any, Any],
+        table: TableProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT],
         row: Any,
     ) -> tuple[type[Any], tuple[Any, ...]] | None:
         pk_columns = getattr(table, "primary_key", ())
@@ -231,7 +241,7 @@ class BackendBase[ModelT, InsertT, WhereT: Mapping[str, object]](BackendProtocol
 
     def _attach_relations(
         self,
-        table: TableProtocol[ModelT, Any, Any],
+        table: TableProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT],
         instance: ModelT,
         include_map: Mapping[str, bool],
     ) -> None:
@@ -271,7 +281,7 @@ class BackendBase[ModelT, InsertT, WhereT: Mapping[str, object]](BackendProtocol
 
     def _resolve_primary_key(
         self,
-        table: TableProtocol[ModelT, InsertT, WhereT],
+        table: TableProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT],
         payload: Mapping[str, object],
         cursor: Any,
     ) -> dict[str, object]:
