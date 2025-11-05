@@ -125,7 +125,7 @@ def _get_environment() -> Environment:
         _ENVIRONMENT = Environment(
             loader=PackageLoader("dclassql", "templates"),
             autoescape=False,
-            trim_blocks=False,
+            trim_blocks=True,
             lstrip_blocks=True,
         )
     return _ENVIRONMENT
