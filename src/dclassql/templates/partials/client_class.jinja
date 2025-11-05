@@ -5,7 +5,7 @@ class Client(BaseDBPool):
 
 {% for method in client.backend_methods %}    @classmethod
     @save_local
-    def {{ method.method_name }}(cls) -> BackendProtocol[Any, Any, Mapping[str, object]]:
+    def {{ method.method_name }}(cls) -> BackendProtocol[Any, Any, Mapping[str, object], Mapping[str, bool], Mapping[str, Literal['asc', 'desc']]]:
         config = cls.datasources[{{ method.key_repr }}]
         if config.provider == 'sqlite':
             conn = open_sqlite_connection(config.url)
@@ -14,7 +14,7 @@ class Client(BaseDBPool):
         raise ValueError(f"Unsupported provider '{config.provider}' for datasource {{ method.key_repr }}")
 
 {% endfor %}    def __init__(self) -> None:
-{% for binding in client.model_bindings %}        self.{{ binding.attr_name }} = {{ binding.model_name }}Table(cast(BackendProtocol[{{ binding.model_name }}, {{ binding.model_name }}Insert, {{ binding.model_name }}WhereDict], self.{{ binding.backend_method }}()))
+{% for binding in client.model_bindings %}        self.{{ binding.attr_name }} = {{ binding.model_name }}Table(cast(BackendProtocol[{{ binding.model_name }}, {{ binding.model_name }}Insert, {{ binding.model_name }}WhereDict, {{ binding.model_name }}IncludeDict, {{ binding.model_name }}OrderByDict], self.{{ binding.backend_method }}()))
 {% endfor %}
 
     @classmethod

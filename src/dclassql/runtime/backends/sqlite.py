@@ -172,7 +172,7 @@ class SQLiteBackend[
         self._clear_identity_map()
 
 
-def create_backend(provider: str, connection: Any) -> BackendProtocol[Any, Any, Mapping[str, object]]:
+def create_backend(provider: str, connection: Any) -> BackendProtocol[Any, Any, Mapping[str, object], Mapping[str, bool], Mapping[str, Literal['asc', 'desc']]]:
     if isinstance(connection, SQLiteBackend):
         return connection
     if provider == "sqlite":
