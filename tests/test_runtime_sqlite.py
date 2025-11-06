@@ -76,6 +76,25 @@ def test_insert_and_find_roundtrip(tmp_path: Path):
     client.__class__.close_all()
 
 
+def test_find_returns_distinct_instances(tmp_path: Path):
+    db_path = tmp_path / "runtime.db"
+    _prepare_database(db_path)
+    namespace, client = _build_client()
+    user_table = client.runtime_user
+    InsertModel = namespace["RuntimeUserInsert"]
+
+    user_table.insert(InsertModel(id=None, name="Alice", email=None))
+
+    first = user_table.find_first(order_by={"id": "asc"})
+    second = user_table.find_first(order_by={"id": "asc"})
+
+    assert first is not None and second is not None
+    assert first.id == second.id
+    assert first is not second
+
+    client.__class__.close_all()
+
+
 def test_insert_many_utilises_backend(tmp_path: Path):
     db_path = tmp_path / "runtime.db"
     _prepare_database(db_path)

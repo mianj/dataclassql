@@ -4,6 +4,7 @@ import sys
 from abc import ABC, abstractmethod
 from dataclasses import MISSING, fields, is_dataclass
 from typing import Any, Literal, Mapping, Sequence, Type, cast, get_origin
+from weakref import ReferenceType, ref
 
 from pypika import Query, Table
 from pypika.enums import Order
@@ -25,7 +26,7 @@ class BackendBase(BackendProtocol, ABC):
     parameter_cls: type[Parameter] = Parameter
 
     def __init__(self) -> None:
-        self._identity_map: dict[tuple[type[Any], tuple[Any, ...]], object] = {}
+        self._identity_map: dict[tuple[type[Any], tuple[Any, ...]], list[ReferenceType[object]]] = {}
 
     def insert(
         self,
@@ -160,34 +161,35 @@ class BackendBase(BackendProtocol, ABC):
         include_map: Mapping[str, bool],
     ) -> ModelT:
         key = self._identity_key(table, row)
-        cached = self._identity_map.get(key) if key is not None else None
         model = table.model
-        if cached is None:
-            if is_dataclass(model):
-                values: dict[str, Any] = {spec.name: row[spec.name] for spec in table.column_specs}
-                instance = model.__new__(model)
-                for field in fields(model):
-                    if field.name in values:
-                        value = values[field.name]
-                    elif field.default is not MISSING:
-                        value = field.default
-                    elif field.default_factory is not MISSING:
-                        value = field.default_factory()
+        if is_dataclass(model):
+            values: dict[str, Any] = {spec.name: row[spec.name] for spec in table.column_specs}
+            instance = model.__new__(model)
+            for field in fields(model):
+                if field.name in values:
+                    value = values[field.name]
+                elif field.default is not MISSING:
+                    value = field.default
+                elif field.default_factory is not MISSING:
+                    value = field.default_factory()
+                else:
+                    origin = get_origin(field.type)
+                    if origin in (list, set, frozenset):
+                        value = origin()
                     else:
-                        origin = get_origin(field.type)
-                        if origin in (list, set, frozenset):
-                            value = origin()
-                        else:
-                            value = None
-                    object.__setattr__(instance, field.name, value)
-            else:
-                instance = model(**{spec.name: row[spec.name] for spec in table.column_specs})
-            if key is not None:
-                self._identity_map[key] = instance
+                        value = None
+                object.__setattr__(instance, field.name, value)
         else:
-            instance = cached
-            for spec in table.column_specs:
-                object.__setattr__(instance, spec.name, row[spec.name])
+            instance = model(**{spec.name: row[spec.name] for spec in table.column_specs})
+        if key is not None:
+            owners = self._identity_map.get(key)
+            alive_refs: list[ReferenceType[object]] = []
+            if owners is not None:
+                for owner_ref in owners:
+                    if owner_ref() is not None:
+                        alive_refs.append(owner_ref)
+            alive_refs.append(ref(instance))
+            self._identity_map[key] = alive_refs
         instance = cast(ModelT, instance)
         self._attach_relations(table, instance, include_map)
         return instance
@@ -228,10 +230,20 @@ class BackendBase(BackendProtocol, ABC):
             if not key_values:
                 continue
             identity_key = (remote_model, tuple(key_values))
-            owner = self._identity_map.get(identity_key)
-            if owner is None:
+            owners = self._identity_map.get(identity_key)
+            if not owners:
                 continue
-            reset_lazy_backref(owner, backref)
+            alive_refs: list[ReferenceType[object]] = []
+            for owner_ref in owners:
+                owner = owner_ref()
+                if owner is None:
+                    continue
+                reset_lazy_backref(owner, backref)
+                alive_refs.append(owner_ref)
+            if alive_refs:
+                self._identity_map[identity_key] = alive_refs
+            else:
+                self._identity_map.pop(identity_key, None)
 
     def _identity_key(
         self,
