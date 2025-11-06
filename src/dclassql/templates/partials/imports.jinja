@@ -5,6 +5,7 @@ from types import MappingProxyType
 from typing import Any, Literal, Mapping, Sequence, NotRequired
 from typing_extensions import TypedDict
 
+from dclassql import DataSourceConfig
 from dclassql.db_pool import BaseDBPool, save_local
 from dclassql.runtime.backends import BackendProtocol, ColumnSpec, ForeignKeySpec, RelationSpec
 from dclassql.runtime.datasource import open_sqlite_connection

@@ -1,3 +1,4 @@
+from .model_inspector import DataSourceConfig
 from .db_pool import BaseDBPool, save_local
 from .push import db_push
 from .runtime.backends.lazy import eager
@@ -24,4 +25,5 @@ __all__ = [
     'unwarp_or_raise',
     'BaseDBPool',
     'save_local',
+    'DataSourceConfig',
 ]

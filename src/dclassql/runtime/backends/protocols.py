@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Callable, Literal, Mapping, Protocol, Sequence, runtime_checkable
 
+from dclassql.model_inspector import DataSourceConfig
 from dclassql.typing import IncludeT, InsertT, ModelT, OrderByT, WhereT
 
 from .metadata import ColumnSpec, ForeignKeySpec, RelationSpec
@@ -21,9 +22,13 @@ class TableProtocol[
 
     model: type[ModelT]
     insert_model: type[InsertT]
+    table_name: str
+    datasource: DataSourceConfig
     column_specs: tuple[ColumnSpec, ...]
     column_specs_by_name: Mapping[str, ColumnSpec]
     primary_key: tuple[str, ...]
+    indexes: tuple[tuple[str, ...], ...]
+    unique_indexes: tuple[tuple[str, ...], ...]
     foreign_keys: tuple[ForeignKeySpec, ...]
     relations: tuple[RelationSpec[BackendProtocol], ...]
 

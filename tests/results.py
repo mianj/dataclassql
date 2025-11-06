@@ -5,23 +5,13 @@ from types import MappingProxyType
 from typing import Any, Literal, Mapping, Sequence, NotRequired
 from typing_extensions import TypedDict
 
+from dclassql import DataSourceConfig
 from dclassql.db_pool import BaseDBPool, save_local
 from dclassql.runtime.backends import BackendProtocol, ColumnSpec, ForeignKeySpec, RelationSpec
 from dclassql.runtime.datasource import open_sqlite_connection
 
 from datetime import datetime
 from tests.test_codegen import Address, BirthDay, Book, User, UserBook
-
-@dataclass(slots=True)
-class DataSourceConfig:
-    provider: str
-    url: str | None
-    name: str | None = None
-
-    @property
-    def key(self) -> str:
-        return self.name or self.provider
-
 
 
 TAddressIncludeCol = Literal['user']
