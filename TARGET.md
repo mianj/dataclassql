@@ -119,6 +119,16 @@ class UserTable:
     - 未来会支持从环境变量, 现在先不管
 - 相关sql使用`pypika`生成
 
+# 迭代节奏: Prisma 风格 where 过滤
+- **阶段 1**: 标量字段过滤与逻辑组合  
+  - 为基础字段生成 `*Filter` 类型, 支持 `eq`/`lt`/`lte`/`gt`/`gte`/`contains`/`starts_with`/`ends_with`/`in`/`not_in`/`not` 等操作符  
+  - `WhereDict` 支持 `AND`/`OR`/`NOT`, 运行时解析为 `pypika` 条件
+- **阶段 2**: 集合/JSON 字段操作符与大小写模式  
+  - 列表/JSON 支持 `has`/`has_some`/`has_every`/`is_empty`, 字符串过滤扩展 `mode="insensitive"` 等选项
+- **阶段 3**: 关系过滤  
+  - 实现 `is`/`is_not` (一对一) 与 `some`/`none`/`every` (一对多)  
+  - 子查询/EXISTS 组合以保持懒加载兼容
+
 ## 期待的样例
 
 ```python

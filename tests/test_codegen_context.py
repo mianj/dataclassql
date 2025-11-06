@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from dclassql.codegen import (
+    _ScalarFilterRegistry,
     _TypeRenderer,
     _build_client_context,
     _build_model_context,
@@ -16,13 +17,14 @@ from .test_codegen import Address, BirthDay, Book, User, UserBook
 def _prepare_context(models: list[type[Any]]):
     model_infos = inspect_models(models)
     renderer = _TypeRenderer({info.model: name for name, info in model_infos.items()})
-    return model_infos, renderer
+    filter_registry = _ScalarFilterRegistry(renderer)
+    return model_infos, renderer, filter_registry
 
 
 def test_model_context_shapes_insert_and_typeddict_sections() -> None:
-    model_infos, renderer = _prepare_context([User, Address, BirthDay, Book, UserBook])
+    model_infos, renderer, filter_registry = _prepare_context([User, Address, BirthDay, Book, UserBook])
 
-    address_ctx = _build_model_context(model_infos["Address"], renderer, model_infos)
+    address_ctx = _build_model_context(model_infos["Address"], renderer, model_infos, filter_registry)
 
     assert address_ctx.name == "Address"
     assert address_ctx.model_info is model_infos["Address"]
@@ -34,7 +36,7 @@ def test_model_context_shapes_insert_and_typeddict_sections() -> None:
     assert typed_id_field.annotation.startswith("NotRequired[")
 
     where_names = {field.name for field in address_ctx.where_fields}
-    assert {"id", "location", "user_id"} <= where_names
+    assert {"id", "location", "user_id", "AND", "OR", "NOT"} <= where_names
 
     assert any(spec.auto_increment for spec in address_ctx.column_specs)
     assert "NotRequired" in renderer.typing_names
@@ -45,7 +47,7 @@ def test_model_context_shapes_insert_and_typeddict_sections() -> None:
 
 
 def test_client_context_binds_models_to_datasource_backends() -> None:
-    model_infos, _ = _prepare_context([User, Address, BirthDay, Book, UserBook])
+    model_infos, _, _ = _prepare_context([User, Address, BirthDay, Book, UserBook])
 
     client_ctx = _build_client_context(model_infos)
 
@@ -63,7 +65,7 @@ def test_client_context_binds_models_to_datasource_backends() -> None:
 
 
 def test_collect_exports_includes_expected_symbols() -> None:
-    model_infos, _ = _prepare_context([User, Address, BirthDay])
+    model_infos, _, _ = _prepare_context([User, Address, BirthDay])
 
     exports = _collect_exports(model_infos)
 

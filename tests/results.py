@@ -13,6 +13,43 @@ from dclassql.runtime.datasource import open_sqlite_connection
 from datetime import datetime
 from tests.test_codegen import Address, BirthDay, Book, User, UserBook
 
+class DateTimeFilter(TypedDict, total=False, closed=True):
+    EQ: datetime | None
+    IN: Sequence[datetime]
+    NOT_IN: Sequence[datetime]
+    LT: datetime
+    LTE: datetime
+    GT: datetime
+    GTE: datetime
+    NOT: DateTimeFilter | datetime | None
+
+
+class IntFilter(TypedDict, total=False, closed=True):
+    EQ: int | None
+    IN: Sequence[int]
+    NOT_IN: Sequence[int]
+    LT: int
+    LTE: int
+    GT: int
+    GTE: int
+    NOT: IntFilter | int | None
+
+
+class StringFilter(TypedDict, total=False, closed=True):
+    EQ: str | None
+    IN: Sequence[str]
+    NOT_IN: Sequence[str]
+    LT: str
+    LTE: str
+    GT: str
+    GTE: str
+    CONTAINS: str
+    STARTS_WITH: str
+    ENDS_WITH: str
+    NOT: StringFilter | str | None
+
+
+
 
 TAddressIncludeCol = Literal['user']
 TAddressSortableCol = Literal['id', 'location', 'user_id']
@@ -31,9 +68,12 @@ class AddressInsertDict(TypedDict, closed=True):
 
 
 class AddressWhereDict(TypedDict, total=False, closed=True):
-    id: int | None
-    location: str | None
-    user_id: int | None
+    id: int | None | IntFilter
+    location: str | None | StringFilter
+    user_id: int | None | IntFilter
+    AND: AddressWhereDict | Sequence[AddressWhereDict]
+    OR: Sequence[AddressWhereDict]
+    NOT: AddressWhereDict | Sequence[AddressWhereDict]
 
 
 class AddressIncludeDict(TypedDict, total=False, closed=True):
@@ -112,8 +152,11 @@ class BirthDayInsertDict(TypedDict, closed=True):
 
 
 class BirthDayWhereDict(TypedDict, total=False, closed=True):
-    user_id: int | None
-    date: datetime | None
+    user_id: int | None | IntFilter
+    date: datetime | None | DateTimeFilter
+    AND: BirthDayWhereDict | Sequence[BirthDayWhereDict]
+    OR: Sequence[BirthDayWhereDict]
+    NOT: BirthDayWhereDict | Sequence[BirthDayWhereDict]
 
 
 class BirthDayIncludeDict(TypedDict, total=False, closed=True):
@@ -190,8 +233,11 @@ class BookInsertDict(TypedDict, closed=True):
 
 
 class BookWhereDict(TypedDict, total=False, closed=True):
-    id: int | None
-    name: str | None
+    id: int | None | IntFilter
+    name: str | None | StringFilter
+    AND: BookWhereDict | Sequence[BookWhereDict]
+    OR: Sequence[BookWhereDict]
+    NOT: BookWhereDict | Sequence[BookWhereDict]
 
 
 class BookIncludeDict(TypedDict, total=False, closed=True):
@@ -265,10 +311,13 @@ class UserInsertDict(TypedDict, closed=True):
 
 
 class UserWhereDict(TypedDict, total=False, closed=True):
-    id: int | None
-    name: str | None
-    email: str | None
-    last_login: datetime | None
+    id: int | None | IntFilter
+    name: str | None | StringFilter
+    email: str | None | StringFilter
+    last_login: datetime | None | DateTimeFilter
+    AND: UserWhereDict | Sequence[UserWhereDict]
+    OR: Sequence[UserWhereDict]
+    NOT: UserWhereDict | Sequence[UserWhereDict]
 
 
 class UserIncludeDict(TypedDict, total=False, closed=True):
@@ -348,9 +397,12 @@ class UserBookInsertDict(TypedDict, closed=True):
 
 
 class UserBookWhereDict(TypedDict, total=False, closed=True):
-    user_id: int | None
-    book_id: int | None
-    created_at: datetime | None
+    user_id: int | None | IntFilter
+    book_id: int | None | IntFilter
+    created_at: datetime | None | DateTimeFilter
+    AND: UserBookWhereDict | Sequence[UserBookWhereDict]
+    OR: Sequence[UserBookWhereDict]
+    NOT: UserBookWhereDict | Sequence[UserBookWhereDict]
 
 
 class UserBookIncludeDict(TypedDict, total=False, closed=True):

@@ -137,6 +137,9 @@ def test_generate_client_matches_expected_shape() -> None:
     user_insert_cls = namespace['UserInsert']
     user_insert_dict = namespace['UserInsertDict']
     user_where_dict = namespace['UserWhereDict']
+    assert 'StringFilter' in namespace
+    assert 'IntFilter' in namespace
+    assert 'DateTimeFilter' in namespace
 
     backend_protocol = namespace['BackendProtocol']
 
@@ -161,15 +164,26 @@ def test_generate_client_matches_expected_shape() -> None:
     assert user_insert_dict not in user_where_dict.__mro__
 
     where_hints = get_type_hints(user_where_dict, globalns=namespace, localns=namespace)
-    for name, hint in where_hints.items():
-        assert name in insert_dict_hints
-        got_args = set(get_args(hint)) or {hint}
+    assert set(insert_dict_hints.keys()).issubset(set(where_hints.keys()))
+    logical_keys = {'AND', 'OR', 'NOT'}
+    assert logical_keys <= where_hints.keys()
+
+    def _flatten_union(tp: Any) -> set[Any]:
+        origin = get_origin(tp)
+        if origin is None:
+            return {tp}
+        if origin is Literal:
+            return {tp}
+        return set().union(*( _flatten_union(arg) for arg in get_args(tp) ))
+
+    for name, expected_hint in insert_dict_hints.items():
+        hint = where_hints[name]
+        got_args = _flatten_union(hint)
         assert type(None) in got_args
-        got_args.remove(type(None))
-        expected_hint = insert_dict_hints[name]
-        expected_args = set(get_args(expected_hint)) or {expected_hint}
+        got_args.discard(type(None))
+        expected_args = _flatten_union(expected_hint)
         expected_args.discard(type(None))
-        assert got_args == expected_args
+        assert expected_args <= got_args
 
     insert_hints = get_type_hints(user_table_cls.insert, globalns=namespace, localns=namespace)
     insert_data_type = insert_hints['data']

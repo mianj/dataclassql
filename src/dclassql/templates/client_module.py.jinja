@@ -1,6 +1,10 @@
 {% import 'partials/macros.jinja' as macros %}
 {% include 'partials/imports.jinja' %}
 
+{% if scalar_filters %}
+{% include 'partials/scalar_filters.jinja' %}
+{% endif %}
+
 {% for model in models %}
 {% include 'partials/model_section.jinja' %}
 {% endfor %}

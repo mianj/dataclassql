@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from types import UnionType
 from typing import Annotated, Any, Iterable, Mapping, Sequence, get_args, get_origin, Literal
 
@@ -67,6 +68,12 @@ class RelationRender:
     mapping_literal: str
     table_module_expr: str
     table_factory_expr: str
+
+
+@dataclass(slots=True)
+class ScalarFilterRender:
+    name: str
+    fields: tuple[TypedDictFieldSpec, ...]
 
 
 @dataclass(slots=True)
@@ -135,6 +142,7 @@ def _get_environment() -> Environment:
 def generate_client(models: Sequence[type[Any]]) -> GeneratedModule:
     model_infos = inspect_models(models)
     renderer = _TypeRenderer({info.model: name for name, info in model_infos.items()})
+    filter_registry = _ScalarFilterRegistry(renderer)
 
     model_imports: dict[str, set[str]] = defaultdict(set)
     for info in model_infos.values():
@@ -142,7 +150,7 @@ def generate_client(models: Sequence[type[Any]]) -> GeneratedModule:
         model_imports.setdefault(module, set()).add(info.model.__name__)
 
     model_contexts = [
-        _build_model_context(model_infos[name], renderer, model_infos)
+        _build_model_context(model_infos[name], renderer, model_infos, filter_registry)
         for name in sorted(model_infos.keys())
     ]
 
@@ -160,6 +168,7 @@ def generate_client(models: Sequence[type[Any]]) -> GeneratedModule:
 
     client_context = _build_client_context(model_infos)
     exports = _collect_exports(model_infos)
+    scalar_filters = filter_registry.render_definitions()
 
     template = _get_environment().get_template(_TEMPLATE_NAME)
     code = template.render(
@@ -167,6 +176,7 @@ def generate_client(models: Sequence[type[Any]]) -> GeneratedModule:
         models=tuple(model_contexts),
         client=client_context,
         exports=tuple(exports),
+        scalar_filters=scalar_filters,
     )
     if not code.endswith("\n"):
         code += "\n"
@@ -177,6 +187,7 @@ def _build_model_context(
     info: ModelInfo,
     renderer: "_TypeRenderer",
     model_infos: Mapping[str, ModelInfo],
+    filter_registry: _ScalarFilterRegistry,
 ) -> ModelRenderContext:
     name = info.model.__name__
 
@@ -206,7 +217,20 @@ def _build_model_context(
         annotation = renderer.render(col.python_type)
         if "None" not in annotation:
             annotation = f"{annotation} | None"
+        filter_name = filter_registry.register(col.python_type)
+        if filter_name is not None and filter_name not in annotation:
+            annotation = f"{annotation} | {filter_name}"
         where_fields.append(WhereFieldSpec(name=col.name, annotation=annotation))
+
+    renderer.require_typing("Sequence")
+    where_dict_name = f"{name}WhereDict"
+    where_fields.extend(
+        [
+            WhereFieldSpec(name="AND", annotation=f"{where_dict_name} | Sequence[{where_dict_name}]"),
+            WhereFieldSpec(name="OR", annotation=f"Sequence[{where_dict_name}]"),
+            WhereFieldSpec(name="NOT", annotation=f"{where_dict_name} | Sequence[{where_dict_name}]"),
+        ]
+    )
 
     column_specs = [
         ColumnSpecRender(
@@ -443,6 +467,171 @@ def _strip_optional_annotation(annotation: str) -> str:
 def _camel_to_snake(name: str) -> str:
     pattern = re.compile(r"(?<!^)(?=[A-Z])")
     return pattern.sub("_", name).lower()
+
+
+@dataclass(slots=True)
+class _FilterFieldTemplate:
+    name: str
+    annotation_template: str
+    require_sequence: bool = False
+
+
+@dataclass(slots=True)
+class _FilterTemplate:
+    alias: str
+    fields: tuple[_FilterFieldTemplate, ...]
+
+
+def _resolve_scalar_base(tp: Any) -> type[Any] | None:
+    origin = get_origin(tp)
+    if origin is Annotated:
+        return _resolve_scalar_base(get_args(tp)[0])
+    if origin is UnionType:
+        args = [arg for arg in get_args(tp) if arg is not type(None)]
+        if len(args) == 1:
+            return _resolve_scalar_base(args[0])
+        return None
+    if origin is not None:
+        return None
+    if isinstance(tp, type):
+        if tp is bool:
+            return bool
+        if issubclass(tp, str):
+            return str
+        if issubclass(tp, bytes):
+            return bytes
+        if issubclass(tp, datetime):
+            return datetime
+        if issubclass(tp, date):
+            return date
+        if issubclass(tp, float):
+            return float
+        if issubclass(tp, int):
+            return int
+    return None
+
+
+_SCALAR_FILTER_TEMPLATES: dict[type[Any], _FilterTemplate] = {
+    str: _FilterTemplate(
+        alias="StringFilter",
+        fields=(
+            _FilterFieldTemplate("EQ", "{base} | None"),
+            _FilterFieldTemplate("IN", "Sequence[{base}]", require_sequence=True),
+            _FilterFieldTemplate("NOT_IN", "Sequence[{base}]", require_sequence=True),
+            _FilterFieldTemplate("LT", "{base}"),
+            _FilterFieldTemplate("LTE", "{base}"),
+            _FilterFieldTemplate("GT", "{base}"),
+            _FilterFieldTemplate("GTE", "{base}"),
+            _FilterFieldTemplate("CONTAINS", "{base}"),
+            _FilterFieldTemplate("STARTS_WITH", "{base}"),
+            _FilterFieldTemplate("ENDS_WITH", "{base}"),
+            _FilterFieldTemplate("NOT", "{self} | {base} | None"),
+        ),
+    ),
+    bool: _FilterTemplate(
+        alias="BoolFilter",
+        fields=(
+            _FilterFieldTemplate("EQ", "{base} | None"),
+            _FilterFieldTemplate("IN", "Sequence[{base}]", require_sequence=True),
+            _FilterFieldTemplate("NOT_IN", "Sequence[{base}]", require_sequence=True),
+            _FilterFieldTemplate("NOT", "{self} | {base} | None"),
+        ),
+    ),
+    int: _FilterTemplate(
+        alias="IntFilter",
+        fields=(
+            _FilterFieldTemplate("EQ", "{base} | None"),
+            _FilterFieldTemplate("IN", "Sequence[{base}]", require_sequence=True),
+            _FilterFieldTemplate("NOT_IN", "Sequence[{base}]", require_sequence=True),
+            _FilterFieldTemplate("LT", "{base}"),
+            _FilterFieldTemplate("LTE", "{base}"),
+            _FilterFieldTemplate("GT", "{base}"),
+            _FilterFieldTemplate("GTE", "{base}"),
+            _FilterFieldTemplate("NOT", "{self} | {base} | None"),
+        ),
+    ),
+    float: _FilterTemplate(
+        alias="FloatFilter",
+        fields=(
+            _FilterFieldTemplate("EQ", "{base} | None"),
+            _FilterFieldTemplate("IN", "Sequence[{base}]", require_sequence=True),
+            _FilterFieldTemplate("NOT_IN", "Sequence[{base}]", require_sequence=True),
+            _FilterFieldTemplate("LT", "{base}"),
+            _FilterFieldTemplate("LTE", "{base}"),
+            _FilterFieldTemplate("GT", "{base}"),
+            _FilterFieldTemplate("GTE", "{base}"),
+            _FilterFieldTemplate("NOT", "{self} | {base} | None"),
+        ),
+    ),
+    datetime: _FilterTemplate(
+        alias="DateTimeFilter",
+        fields=(
+            _FilterFieldTemplate("EQ", "{base} | None"),
+            _FilterFieldTemplate("IN", "Sequence[{base}]", require_sequence=True),
+            _FilterFieldTemplate("NOT_IN", "Sequence[{base}]", require_sequence=True),
+            _FilterFieldTemplate("LT", "{base}"),
+            _FilterFieldTemplate("LTE", "{base}"),
+            _FilterFieldTemplate("GT", "{base}"),
+            _FilterFieldTemplate("GTE", "{base}"),
+            _FilterFieldTemplate("NOT", "{self} | {base} | None"),
+        ),
+    ),
+    date: _FilterTemplate(
+        alias="DateFilter",
+        fields=(
+            _FilterFieldTemplate("EQ", "{base} | None"),
+            _FilterFieldTemplate("IN", "Sequence[{base}]", require_sequence=True),
+            _FilterFieldTemplate("NOT_IN", "Sequence[{base}]", require_sequence=True),
+            _FilterFieldTemplate("LT", "{base}"),
+            _FilterFieldTemplate("LTE", "{base}"),
+            _FilterFieldTemplate("GT", "{base}"),
+            _FilterFieldTemplate("GTE", "{base}"),
+            _FilterFieldTemplate("NOT", "{self} | {base} | None"),
+        ),
+    ),
+    bytes: _FilterTemplate(
+        alias="BytesFilter",
+        fields=(
+            _FilterFieldTemplate("EQ", "{base} | None"),
+            _FilterFieldTemplate("IN", "Sequence[{base}]", require_sequence=True),
+            _FilterFieldTemplate("NOT_IN", "Sequence[{base}]", require_sequence=True),
+            _FilterFieldTemplate("NOT", "{self} | {base} | None"),
+        ),
+    ),
+}
+
+
+class _ScalarFilterRegistry:
+    def __init__(self, renderer: "_TypeRenderer") -> None:
+        self._renderer = renderer
+        self._definitions: dict[str, ScalarFilterRender] = {}
+
+    def register(self, annotation: Any) -> str | None:
+        base_type = _resolve_scalar_base(annotation)
+        if base_type is None:
+            return None
+        template = _SCALAR_FILTER_TEMPLATES.get(base_type)
+        if template is None:
+            return None
+        if template.alias not in self._definitions:
+            base_annotation = self._renderer.render(base_type)
+            fields: list[TypedDictFieldSpec] = []
+            for field_template in template.fields:
+                field_annotation = field_template.annotation_template.format(
+                    base=base_annotation,
+                    self=template.alias,
+                )
+                fields.append(TypedDictFieldSpec(name=field_template.name, annotation=field_annotation))
+                if field_template.require_sequence:
+                    self._renderer.require_typing("Sequence")
+            self._definitions[template.alias] = ScalarFilterRender(
+                name=template.alias,
+                fields=tuple(fields),
+            )
+        return template.alias
+
+    def render_definitions(self) -> tuple[ScalarFilterRender, ...]:
+        return tuple(self._definitions[name] for name in sorted(self._definitions))
 
 
 class _TypeRenderer:

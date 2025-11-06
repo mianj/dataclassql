@@ -1,0 +1,5 @@
+{% for filter in scalar_filters %}
+class {{ filter.name }}(TypedDict, total=False, closed=True):
+{{ macros.typed_dict_fields(filter.fields)|indent(4, True) }}
+
+{% endfor %}
