@@ -142,13 +142,15 @@ class WhereCompiler:
         if operator == "IN":
             values = self._ensure_sequence(operand, label="IN")
             if not values:
-                return Criterion.wrap_constant(False)
+                # Return a criterion that is always false
+                return field == field and field != field
             params = tuple(self._backend._new_bound_parameter(self.params, item) for item in values)
             return field.isin(params)
         if operator == "NOT_IN":
             values = self._ensure_sequence(operand, label="NOT_IN")
             if not values:
-                return Criterion.wrap_constant(True)
+                # Return a criterion that is always true
+                return field == field
             params = tuple(self._backend._new_bound_parameter(self.params, item) for item in values)
             return field.notin(params)
         if operator == "LT":
@@ -275,7 +277,7 @@ class WhereCompiler:
     def _relation_subquery(
         self,
         relation: RelationSpec,
-    ) -> tuple[QueryBuilder, Table, TableProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT]]:
+    ) -> tuple[QueryBuilder, Table, TableProtocol]:
         table_cls = self._resolve_relation_table_cls(relation)
         remote_instance = table_cls(self._backend)
         remote_table = Table(remote_instance.table_name)
@@ -284,7 +286,7 @@ class WhereCompiler:
             query = query.where(remote_table.field(target_column) == self._sql_table.field(owner_column))
         return query, remote_table, remote_instance
 
-    def _resolve_relation_table_cls(self, relation: RelationSpec) -> type:
+    def _resolve_relation_table_cls(self, relation: RelationSpec) -> type[TableProtocol]:
         if relation.table_factory is not None:
             return relation.table_factory()
         module_name = relation.table_module or getattr(self._table, "__module__", None)
@@ -298,7 +300,7 @@ class WhereCompiler:
         relation: RelationSpec,
         operand: Mapping[str, object],
         remote_table: Table,
-        remote_instance: TableProtocol[ModelT, InsertT, WhereT, IncludeT, OrderByT],
+        remote_instance: TableProtocol,
     ) -> Criterion | None:
         compiler = WhereCompiler(self._backend, remote_instance, remote_table)
         criterion = compiler.compile(operand)
